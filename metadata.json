@@ -1,0 +1,6 @@
+{
+  "name": "The Receipt of Truth",
+  "description": "Generate immutable, time-stamped football prediction receipts to claim your ultimate World Cup 2026 bragging rights.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

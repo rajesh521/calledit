@@ -1,0 +1,56 @@
+{
+  "entities": {
+    "Prediction": {
+      "title": "Prediction Record",
+      "description": "An individual user's sports match score and event prediction receipt.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique prediction receipt ID" },
+        "name": { "type": "string", "description": "Prophet custom alias or username" },
+        "matchId": { "type": "string", "description": "Reference ID matching PRESET matchups or custom tag" },
+        "predictedScoreA": { "type": "string", "description": "Predicted goals for primary contestant team" },
+        "predictedScoreB": { "type": "string", "description": "Predicted goals for secondary contestant team" },
+        "firstGoalscorer": { "type": "string", "description": "Predicted first player to score in match" },
+        "boldPredictions": {
+          "type": "array",
+          "description": "List of extreme or auxiliary event projections for higher earnings multipliers"
+        },
+        "isGolden": { "type": "boolean", "description": "Whether prediction receipt tier was upgraded using Dodo checkout" },
+        "goldenMessage": { "type": "string", "description": "Premium message or certified label stamped onto receipt" },
+        "timestamp": { "type": "string", "description": "Formatted date and clock timestamp of creation" },
+        "barcodeValue": { "type": "string", "description": "Barcoded stamp text representation for physical scanning emulation" },
+        "tipAmount": { "type": "number", "description": "Optional tip value added to prize pool in USD cents or dollars" },
+        "status": { "type": "string", "enum": ["pending", "correct", "incorrect"], "description": "Live resolution state" },
+        "outcomeScoreA": { "type": "string", "description": "Actual score line for primary team once resolved" },
+        "outcomeScoreB": { "type": "string", "description": "Actual score line for secondary team once resolved" },
+        "scoreMatched": { "type": "boolean", "description": "Whether user's score predictions were exactly correct" },
+        "goalscorerMatched": { "type": "boolean", "description": "Whether first goalscorer prediction was exactly correct" }
+      },
+      "required": ["id", "name", "matchId", "predictedScoreA", "predictedScoreB", "firstGoalscorer", "timestamp"]
+    },
+    "Outcome": {
+      "title": "Match Outcome",
+      "description": "The official verified sports match score and scorer outcome set by referee control.",
+      "type": "object",
+      "properties": {
+        "matchId": { "type": "string", "description": "Reference ID matching PRESET matchup" },
+        "actualScoreA": { "type": "string", "description": "Official final score line for Team A" },
+        "actualScoreB": { "type": "string", "description": "Official final score line for Team B" },
+        "actualFirstGoalscorer": { "type": "string", "description": "Official verified first player who scored in the match" },
+        "resolved": { "type": "boolean", "description": "Resolution status toggle of matchup" },
+        "resolvedAt": { "type": "string", "description": "UTC ISO timestamp when resolution was locked" }
+      },
+      "required": ["matchId", "actualScoreA", "actualScoreB", "resolved"]
+    }
+  },
+  "firestore": {
+    "predictions/{predictionId}": {
+      "schema": "Prediction",
+      "description": "Collection storing all users' pre-match prophecy receipts"
+    },
+    "outcomes/{outcomeId}": {
+      "schema": "Outcome",
+      "description": "Collection storing FIFA official referee verified match outcomes"
+    }
+  }
+}
