@@ -63,3 +63,92 @@
   box-shadow: 8px 8px 0px 0px text-yellow-400;
 }
 
+/* =============================================
+   HOLOGRAPHIC BORDER — Golden Receipt Premium
+   ============================================= */
+@keyframes holographic {
+  0%   { border-color: #F1C40F; box-shadow: 0 0 0 2px #F1C40F44, 8px 8px 0px #000; }
+  16%  { border-color: #FF6B35; box-shadow: 0 0 0 2px #FF6B3544, 8px 8px 0px #000; }
+  33%  { border-color: #FF3CAC; box-shadow: 0 0 0 2px #FF3CAC44, 8px 8px 0px #000; }
+  50%  { border-color: #784BA0; box-shadow: 0 0 0 2px #784BA044, 8px 8px 0px #000; }
+  66%  { border-color: #2B86C5; box-shadow: 0 0 0 2px #2B86C544, 8px 8px 0px #000; }
+  83%  { border-color: #3DFFD0; box-shadow: 0 0 0 2px #3DFFD044, 8px 8px 0px #000; }
+  100% { border-color: #F1C40F; box-shadow: 0 0 0 2px #F1C40F44, 8px 8px 0px #000; }
+}
+
+.holographic-border {
+  animation: holographic 4s linear infinite;
+}
+
+/* =============================================
+   VERIFIED CORRECT STAMP — Pop-in animation
+   ============================================= */
+@keyframes stamp-in {
+  0%   { transform: rotate(-12deg) scale(2.5); opacity: 0; }
+  60%  { transform: rotate(-12deg) scale(0.92); opacity: 1; }
+  80%  { transform: rotate(-12deg) scale(1.06); opacity: 1; }
+  100% { transform: rotate(-12deg) scale(1); opacity: 1; }
+}
+
+.stamp-verified {
+  animation: stamp-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* =============================================
+   GOLDEN SHIMMER — on social card
+   ============================================= */
+@keyframes golden-shimmer {
+  0%   { transform: translateX(-200%) skewX(-20deg); opacity: 0; }
+  40%  { opacity: 0.8; }
+  100% { transform: translateX(300%) skewX(-20deg); opacity: 0; }
+}
+
+.golden-shimmer-overlay::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    105deg,
+    transparent 30%,
+    rgba(255,255,200,0.45) 50%,
+    transparent 70%
+  );
+  animation: golden-shimmer 3.5s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 20;
+}
+
+/* =============================================
+   UPSELL PULSE — CTA attention grabber
+   ============================================= */
+@keyframes upsell-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(241,196,15,0.5), 4px 4px 0 #000; }
+  50%       { box-shadow: 0 0 0 8px rgba(241,196,15,0), 4px 4px 0 #000; }
+}
+
+.upsell-glow {
+  animation: upsell-glow 2s ease-in-out infinite;
+}
+
+/* =============================================
+   "I CALLED IT!" stamp diagonal
+   ============================================= */
+@keyframes called-it-in {
+  0%   { opacity: 0; transform: rotate(-15deg) scale(0.6); }
+  70%  { transform: rotate(-15deg) scale(1.05); opacity: 1; }
+  100% { transform: rotate(-15deg) scale(1); opacity: 1; }
+}
+
+.called-it-stamp {
+  animation: called-it-in 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Fade-in used for newly appearing sections */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+

@@ -2,14 +2,18 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Download, Share2, Copy, Sparkles, Check, Twitter, ArrowLeft, ArrowUpRight, Award, Coffee, Eye, Bell, RefreshCw, Flame, HelpCircle, RefreshCcw, Smile, ShieldAlert } from 'lucide-react';
 import { Prediction } from '../types';
 import { getMatchLabel, encodePrediction, calculateViralIndicators, WORLD_CUP_MATCHES } from '../data';
+import CheckoutUpsell from './CheckoutUpsell';
 
 interface ReceiptViewProps {
   key?: React.Key;
   prediction: Prediction;
+  locale: string;
   onBackToEdit: () => void;
-  onUpgradeClick: () => void;
+  onUpgradeClick: (customText?: string, amount?: number) => void;
+  onBurnClick?: () => void;
   onTipClick: (amount: number) => void;
   onChallenge: (counterPrediction: Prediction) => void;
+  t?: (key: string) => string;
 }
 
 interface RoastLine {
@@ -66,10 +70,13 @@ const FAILURE_LABELS = [
 
 export default function ReceiptView({
   prediction,
+  locale,
   onBackToEdit,
   onUpgradeClick,
+  onBurnClick,
   onTipClick,
-  onChallenge
+  onChallenge,
+  t = (k) => k
 }: ReceiptViewProps) {
   const [copied, setCopied] = useState(false);
   const [downloading, setDownloading] = useState(false);
@@ -176,7 +183,22 @@ export default function ReceiptView({
   const imageUrl = `${window.location.origin}/api/receipt-image/receipt.png?r=${encodeURIComponent(encodePrediction({
     ...prediction,
     status: displayOutcome === 'wrong' ? 'incorrect' : simulatedStatus === 'correct' ? 'correct' : 'pending'
-  }))}`;
+  }))}&locale=${locale}`;
+
+  const handleBurnEvidence = async () => {
+    if (!prediction.id) return;
+    try {
+      await fetch('/api/burn', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ predictionId: prediction.id })
+      });
+    } catch (e) {
+      // Optimistically continue
+    }
+    if (onBurnClick) onBurnClick();
+    else onUpgradeClick();
+  };
 
   const getViralShareText = () => {
     const pSummary = getPredictionSummary();
@@ -322,8 +344,29 @@ Lock in yours before kickoff:`;
   };
 
   // HTML Canvas Exporter - Supporting Right & Wrong outputs for Social/Thermal!
-  const handleDownloadPNG = () => {
+  const handleDownloadPNG = async () => {
     setDownloading(true);
+    
+    if (activeTab === 'social') {
+      try {
+        const response = await fetch(imageUrl);
+        const blob = await response.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        
+        const downloadLink = document.createElement('a');
+        downloadLink.href = blobUrl;
+        downloadLink.download = `receipt_of_brag_${prediction.id.toLowerCase()}_${displayOutcome}_social.png`;
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
+        URL.revokeObjectURL(blobUrl);
+      } catch (e) {
+        console.error('Failed to download backend social card PNG directly:', e);
+      } finally {
+        setDownloading(false);
+      }
+      return;
+    }
     
     const canvas = document.createElement('canvas');
     canvas.width = 640;
@@ -936,73 +979,44 @@ Lock in yours before kickoff:`;
             ref={receiptRef}
             className="w-full max-w-[380px] font-mono relative transition-all duration-500 rounded-sm shrink-0"
           >
-            {displayOutcome === 'wrong' ? (
+            {prediction.burned ? (
+              // ==========================================
+              //   RENDER REDACTED COWARD'S WAY OUT CARD
+              // ==========================================
+              <div className="w-full bg-[#0a0202] text-white border-4 border-red-700 rounded-3xl p-6 relative flex flex-col justify-between aspect-[4/5] neo-shadow overflow-hidden">
+                <div className="absolute top-0 inset-x-0 h-1.5 bg-red-650 animate-pulse" />
+                <div className="space-y-4 relative z-10 text-center flex flex-col justify-center items-center h-full">
+                  <div className="text-5xl animate-bounce">🔥</div>
+                  <h2 className="font-sans font-black text-2xl tracking-tight text-red-500 uppercase italic">
+                    {t('evidenceRedactedHeading')}
+                  </h2>
+                  <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider max-w-xs leading-normal">
+                    {t('evidenceRedactedDesc')}
+                  </p>
+                  <div className="border border-red-900/40 bg-red-950/40 px-3 py-1.5 rounded-lg text-[9px] font-mono font-bold text-red-400 uppercase tracking-widest mt-2">
+                    {t('evidenceRedactedStatus')}
+                  </div>
+                </div>
+                {/* Simulated barcode at the bottom */}
+                <div className="border-t border-red-900/20 pt-4 flex flex-col items-center opacity-30">
+                  <div className="w-48 h-6 bg-red-950/80 rounded-sm flex items-center justify-center font-mono text-[9px] text-red-400 select-none tracking-widest">
+                    ||||| | |||| || ||| | ||| |||| |
+                  </div>
+                </div>
+              </div>
+            ) : displayOutcome === 'wrong' ? (
               // ==========================================
               //   RENDER ROT-COMEDY "YOU CALLED IT... WRONG" CARD
               // ==========================================
               activeTab === 'social' ? (
-                <div className="w-full bg-stone-950 text-white border-4 border-black rounded-3xl p-5 relative flex flex-col justify-between aspect-[4/5] neo-shadow overflow-hidden">
-                  {/* Danger strobe light accent */}
-                  <div className="absolute top-0 inset-x-0 h-1.5 bg-gradient-to-r from-red-600 via-yellow-500 to-red-600" />
-                  
-                  <div className="space-y-3 relative z-10">
-                    <div className="flex justify-between items-center pb-2 border-b border-zinc-800">
-                      <span className="text-[10px] font-black font-mono tracking-widest text-red-500 uppercase flex items-center gap-1">
-                        <ShieldAlert size={14} className="stroke-[2.5]" /> WRONG PROPHECY
-                      </span>
-                      <span className={`px-2 py-0.5 border text-[9px] font-mono font-black rounded uppercase ${missTier.color}`}>
-                        {selectedFailureLabel}
-                      </span>
-                    </div>
-
-                    <div className="space-y-1">
-                      <h2 className="text-zinc-500 text-[9px] font-black uppercase tracking-widest leading-none">
-                        EXPECTED PROPHECY TARGET
-                      </h2>
-                      <p className="text-sm font-black uppercase tracking-tight text-white line-clamp-2 leading-tight">
-                        {getPredictionSummary()}
-                      </p>
-                    </div>
-
-                    {/* Compare Box */}
-                    <div className="p-3 bg-red-950/40 border-2 border-red-900 rounded-xl space-y-2">
-                      <div className="flex justify-between items-center">
-                        <span className="text-[9px] font-mono font-extrabold text-red-400">YOUR TAKE:</span>
-                        <span className="text-xs font-black text-white uppercase truncate max-w-[170px]">
-                          {getPredictionSummary().replace(/^[^:]+:\s*/, '')}
-                        </span>
-                      </div>
-                      <div className="h-0.5 bg-dashed border-t border-red-900/60" />
-                      <div className="flex justify-between items-center">
-                        <span className="text-[9px] font-mono font-extrabold text-red-400/80">REALITY RESULT:</span>
-                        <span className="text-xs font-black text-red-500 uppercase tracking-widest truncate max-w-[170px]">
-                          {customActualResult || 'FAILED'}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Big Quote Comedy Verdict wrapper */}
-                    <div className="py-3 px-3 border-l-4 border-amber-500 bg-stone-900/60 rounded-r-xl space-y-1">
-                      <p className="text-[9px] font-mono font-black text-amber-500 uppercase flex items-center gap-1">
-                        <Smile size={12} /> VERDICT ({roastLevel.toUpperCase()})
-                      </p>
-                      <p className="text-xs font-bold text-stone-200 italic leading-snug">
-                        "{currentRoast}"
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Stamp status & telemetry */}
-                  <div className="border-t border-zinc-850 pt-2.5 relative z-10 flex flex-col gap-1.5">
-                    <div className={`px-3 py-1.5 rounded-lg text-center font-black text-xs uppercase ${missTier.color}`}>
-                      {missTier.text}
-                    </div>
-                    
-                    <div className="flex justify-between items-center text-[8px] font-mono text-zinc-500 px-1 pt-1 border-t border-zinc-900">
-                      <span>TX: ID-ROT-{prediction.id}</span>
-                      <span>STAMP: {prediction.timestamp}</span>
-                    </div>
-                  </div>
+                <div className="w-full bg-stone-950 border-4 border-black rounded-3xl p-1.5 relative flex flex-col justify-between aspect-[9/16] neo-shadow overflow-hidden">
+                  <img 
+                    src={imageUrl} 
+                    alt="Dynamic Social Card" 
+                    referrerPolicy="no-referrer"
+                    className="w-full h-full object-contain rounded-2xl"
+                    loading="lazy"
+                  />
                 </div>
               ) : (
                 // Thermal wrong card with custom rubber stamp indicators
@@ -1112,103 +1126,14 @@ Lock in yours before kickoff:`;
               //   RENDER STANDARD PASS/BRAG PRE-MATCH CARD
               // ==========================================
               activeTab === 'social' ? (
-                <div className="w-full bg-stone-950 text-white border-4 border-black rounded-3xl p-6 relative flex flex-col justify-between aspect-[4/5] neo-shadow overflow-hidden">
-                  {simulatedStatus === 'correct' ? (
-                    <div className="absolute -right-16 -bottom-16 w-52 h-52 bg-emerald-500/20 rounded-full blur-2xl pointer-events-none" />
-                  ) : (
-                    <div className="absolute -right-16 -bottom-16 w-52 h-52 bg-yellow-500/20 rounded-full blur-2xl pointer-events-none" />
-                  )}
-
-                  <div className="space-y-4 relative z-10">
-                    <div className="flex justify-between items-center">
-                      <span className="text-[9px] font-mono tracking-widest text-zinc-400 font-black uppercase">
-                        {simulatedStatus === 'correct' ? 'MATURED TIER' : 'LOCKED PRE-MATCH'}
-                      </span>
-                      <span className={`px-2 py-0.5 border text-[9px] font-mono font-black rounded uppercase ${
-                        hotTake === 'NUCLEAR' ? 'bg-red-500 border-red-500 text-black' :
-                        hotTake === 'HOT' ? 'bg-orange-500 border-orange-500 text-white' :
-                        'bg-zinc-700 border-zinc-600 text-white'
-                      }`}>
-                        {hotTake} TAKE
-                      </span>
-                    </div>
-
-                    <div className="space-y-0.5">
-                      <h2 className="text-zinc-500 text-[10px] font-black uppercase tracking-widest leading-none">
-                        {prediction.predictionType === 'player' ? '👤 PLAYER TARGET' :
-                         prediction.predictionType === 'team' ? '🏆 TEAM TARGET' :
-                         prediction.predictionType === 'custom' ? '🔮 WILD TAKE' :
-                         'I CALLED IT'}
-                      </h2>
-                      <p className="text-xl font-black uppercase italic tracking-tight font-sans leading-tight mt-1 text-white">
-                        {(prediction.predictionType === 'player' ? `${prediction.playerName}` :
-                          prediction.predictionType === 'team' ? `${prediction.teamName}` :
-                          prediction.predictionType === 'custom' ? 'CUSTOM HOT TAKE' :
-                          getMatchLabel(prediction).replace(/^[^\s]+\s*/, ''))}
-                      </p>
-                    </div>
-
-                    {(!prediction.predictionType || prediction.predictionType === 'match') ? (
-                      <div className="py-5 border-y-2 border-zinc-800 flex flex-col items-center justify-center relative bg-stone-900/50 rounded-xl px-2">
-                        <span className="text-[10px] font-mono text-zinc-400 font-extrabold tracking-wider uppercase mb-1">Score Prediction</span>
-                        <div className="font-sans font-black text-5xl sm:text-6xl tracking-tighter leading-none italic flex items-center justify-center text-yellow-400">
-                          <span>{prediction.predictedScoreA}</span>
-                          <span className="text-white mx-3 animate-pulse">:</span>
-                          <span>{prediction.predictedScoreB}</span>
-                        </div>
-                        
-                        <span className="text-[10.5px] font-mono font-bold uppercase mt-3 text-zinc-400 block break-all text-center">
-                          Goalscorer: <span className="text-white font-black">{prediction.firstGoalscorer.toUpperCase()}</span>
-                        </span>
-                      </div>
-                    ) : prediction.predictionType === 'player' ? (
-                      <div className="py-6 border-y-2 border-zinc-800 flex flex-col items-center justify-center relative bg-stone-900/50 rounded-xl px-4 text-center">
-                        <span className="text-[10px] font-mono text-yellow-400 font-extrabold tracking-wider uppercase mb-2">TARGET PLAYER STAT</span>
-                        <div className="font-sans font-black text-2xl tracking-tight leading-none text-white uppercase">
-                          {prediction.playerName}
-                        </div>
-                        <div className="font-mono font-black text-xl tracking-tight mt-3 text-yellow-400 uppercase">
-                          {prediction.playerValue} {prediction.playerMarket}
-                        </div>
-                      </div>
-                    ) : prediction.predictionType === 'team' ? (
-                      <div className="py-6 border-y-2 border-zinc-800 flex flex-col items-center justify-center relative bg-stone-900/50 rounded-xl px-4 text-center">
-                        <span className="text-[10px] font-mono text-yellow-400 font-extrabold tracking-wider uppercase mb-2">TEAM ACHIEVEMENT DESTINY</span>
-                        <div className="font-sans font-black text-2xl tracking-tight leading-none text-white uppercase">
-                          {prediction.teamName}
-                        </div>
-                        <div className="font-mono font-bold text-sm mt-3 text-yellow-400 uppercase leading-snug">
-                          {prediction.teamMarket}
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="py-6 border-y-2 border-zinc-800 flex flex-col items-center justify-center relative bg-stone-900/50 rounded-xl px-4 text-center min-h-[120px]">
-                        <span className="text-[10px] font-mono text-yellow-400 font-extrabold tracking-wider uppercase mb-2">WILD VERDICT INSIGHT</span>
-                        <p className="font-mono font-bold text-xs text-white leading-normal uppercase">
-                          "{prediction.customTakeText}"
-                        </p>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="border-t border-zinc-850 pt-3 relative z-10 flex flex-col gap-2">
-                    {simulatedStatus === 'correct' ? (
-                      <div className="bg-emerald-500 text-black border-2 border-black p-3.5 rounded-xl text-center">
-                        <span className="text-base font-black uppercase tracking-tight block">"This aged like wine 🍷"</span>
-                        <span className="text-[9px] font-mono font-bold uppercase tracking-wider block opacity-90">100% PROVED TRUE</span>
-                      </div>
-                    ) : (
-                      <div className="bg-zinc-900 border border-zinc-800 p-3.5 rounded-xl text-center">
-                        <span className="text-[10px] font-mono font-black uppercase tracking-widest text-zinc-400 block">⏳ MATCH OUTCOME PENDING</span>
-                        <p className="text-[8px] text-zinc-500 uppercase mt-0.5 font-bold">Fast-forward in the simulator to see maturity status</p>
-                      </div>
-                    )}
-
-                    <div className="flex justify-between items-center text-[8px] font-mono text-zinc-500 px-1 pt-1.5 border-t border-zinc-900">
-                      <span>TX: ID-{prediction.id}</span>
-                      <span>NAME: {prediction.name.toUpperCase()}</span>
-                    </div>
-                  </div>
+                <div className="w-full bg-stone-950 border-4 border-black rounded-3xl p-1.5 relative flex flex-col justify-between aspect-[9/16] neo-shadow overflow-hidden">
+                  <img 
+                    src={imageUrl} 
+                    alt="Dynamic Social Card" 
+                    referrerPolicy="no-referrer"
+                    className="w-full h-full object-contain rounded-2xl"
+                    loading="lazy"
+                  />
                 </div>
               ) : (
                 <div 
@@ -1412,6 +1337,14 @@ Lock in yours before kickoff:`;
         {/* CONTROLS & VIRALITY ENGINE PANEL - Column 2 - Right */}
         <div className="md:col-span-5 space-y-6">
           
+          {!prediction.isGolden && (
+            <CheckoutUpsell
+              prediction={prediction}
+              locale={locale}
+              onUpgradeClick={onUpgradeClick}
+            />
+          )}
+          
           {/* ===================================================
               INTERACTIVE POST-FAILURE COMEDY / ROAST CONTROLLER
               =================================================== */}
@@ -1493,6 +1426,20 @@ Lock in yours before kickoff:`;
                 </div>
                 <p className="text-xs font-bold text-stone-200 italic">
                   "{currentRoast}"
+                </p>
+              </div>
+
+              {/* Coward's Way Out - Burn Evidence */}
+              <div className="pt-3 border-t border-red-900/40">
+                <button
+                  type="button"
+                  onClick={handleBurnEvidence}
+                  className="w-full bg-red-750 hover:bg-red-700 text-white font-black text-xs py-3 px-4 rounded-xl border-2 border-black neo-shadow-sm flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                >
+                  <span>🔥 BURN THE EVIDENCE — $0.99</span>
+                </button>
+                <p className="text-[9.5px] text-red-300 font-bold uppercase mt-1 leading-normal text-center">
+                  Your brag aged like milk. Pay $0.99 to delete it from the global Wall of Shame before your friends find it.
                 </p>
               </div>
             </div>

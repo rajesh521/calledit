@@ -1,20 +1,93 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash, Trophy, Sparkles, ChevronRight, HelpCircle } from 'lucide-react';
+import { Plus, Trash, Trophy, Sparkles, ChevronRight, Shuffle, Target, Flame } from 'lucide-react';
 import { Prediction, MatchPreset } from '../types';
 import { WORLD_CUP_MATCHES, generateTransactionId, formatFriendlyDate, calculateViralIndicators } from '../data';
+
+// The full 40-brag arsenal — pre-written nuclear takes organized by flavor
+const TRASH_TALK_POOL = [
+  // 🔥 Spicy
+  "Mexico's defense is going to fold like a lawn chair.",
+  "This goalkeeper couldn't stop a beach ball today.",
+  "Their striker has gone cold. I'm calling a blank sheet performance.",
+  "Second half collapse incoming. Screen this.",
+  "This ref is going to hand them a gift penalty. Watch.",
+  "They haven't won in 6 away games. Today is not the day.",
+  "Set piece kings. First corner = first goal. Lock it in.",
+  "Their captain is injured. Without him they're nothing.",
+  // 💣 Nuclear
+  "If [Team A] doesn't win by 2, I'll never talk about football again.",
+  "Hat-trick incoming. I've staked my reputation on it.",
+  "This is a 4-0. I'm so confident it's embarrassing.",
+  "Messi is walking away with the Golden Boot. Full stop.",
+  "This is the upset of the tournament. Nobody sees it coming except me.",
+  "They're going out in the groups. I said it in January.",
+  "Penalty shootout. And they're going to miss two. Trust me.",
+  "Early red card. Changes everything. I'm calling it now.",
+  // 🎯 Confident
+  "Vini Jr scores before the 20th minute. It's just physics at this point.",
+  "Both teams score. Neither defense deserves to exist.",
+  "The favorite wins but only just. Nervy 1-0 after extra time.",
+  "My model says 2-1. My model is never wrong.",
+  "This team always performs in big tournaments. History says they win.",
+  "Top scorer of the tournament has a hat-trick today. Receipted.",
+  "Clean sheet. They're the most organized defense I've seen.",
+  "Winner decided by a penalty in the 89th minute. Calling it.",
+  // 😏 Smug
+  "I've been saying this for 6 months. Nobody listened. Screenshot this.",
+  "My WhatsApp group is going to owe me so many apologies.",
+  "I said this at the start of the tournament. Still saying it.",
+  "When I'm right about this — and I will be — feel free to quote-tweet.",
+  "Zero upsets today. The chalk wins. Everyone's overthinking this.",
+  "My friend bet against me. My friend is about to lose.",
+  "Call me when the final whistle blows. I'll be waiting.",
+  "This is why you don't bet with your heart. I bet with data.",
+  // 🥛 Chaotic
+  "I have no idea why I'm so confident. I just am. Receipted.",
+  "Scoreless draw. Absolute snoozefest. You'll thank me.",
+  "Somebody scores an own goal in this one. Can feel it.",
+  "Extra time guaranteed. Neither team wants to win in 90.",
+  "Star player gets injured in the warmup. I'm manifesting nothing.",
+  "VAR controversy. Two decisions reversed. Chaos.",
+  "Commentator jinx activates at minute 75. Classic.",
+  "The underdog wins. I'm the only one who called it.",
+];
+
+const LANG_OPTIONS = [
+  { code: 'en', flag: '🇬🇧', label: 'English', hint: 'Default' },
+  { code: 'es', flag: '🇪🇸', label: 'Español', hint: 'WhatsApp ES' },
+  { code: 'pt', flag: '🇧🇷', label: 'Português', hint: 'WhatsApp BR' },
+  { code: 'te', flag: '🇮🇳', label: 'తెలుగు', hint: 'WhatsApp IN' },
+] as const;
 
 interface ReceiptFormProps {
   onSubmit: (prediction: Prediction) => void;
   onUpgradeClick: () => void;
   isGolden: boolean;
   initialPrediction?: Prediction | null;
+  t?: (key: string) => string;
 }
 
-export default function ReceiptForm({ onSubmit, onUpgradeClick, isGolden, initialPrediction }: ReceiptFormProps) {
+export default function ReceiptForm({ onSubmit, onUpgradeClick, isGolden, initialPrediction, t = (k) => k }: ReceiptFormProps) {
+  const [wantsGolden, setWantsGolden] = React.useState(false);
   const [name, setName] = useState('');
+  const [calledOut, setCalledOut] = useState('');
+  const [stakes, setStakes] = useState('');
+  const [shareLanguage, setShareLanguage] = useState<'en' | 'es' | 'pt' | 'te'>('en');
   const [matchId, setMatchId] = useState(WORLD_CUP_MATCHES[0].id);
   const [customTeamA, setCustomTeamA] = useState('');
   const [customTeamB, setCustomTeamB] = useState('');
+
+  // Trash Talk Arsenal state
+  const [roulettePool, setRoulettePool] = useState<string[]>(() => [...TRASH_TALK_POOL].sort(() => Math.random() - 0.5).slice(0, 12));
+  const [pulsedIndex, setPulsedIndex] = useState<number | null>(null);
+  const shuffleRoulette = () => {
+    setRoulettePool([...TRASH_TALK_POOL].sort(() => Math.random() - 0.5).slice(0, 12));
+  };
+  const applyBrag = (text: string, idx: number) => {
+    setCustomTakeText(text);
+    setPulsedIndex(idx);
+    setTimeout(() => setPulsedIndex(null), 600);
+  };
   
   const [scoreA, setScoreA] = useState('2');
   const [scoreB, setScoreB] = useState('1');
@@ -37,8 +110,26 @@ export default function ReceiptForm({ onSubmit, onUpgradeClick, isGolden, initia
   const [customTakeText, setCustomTakeText] = useState('Japan surprises everyone and reaches the quarterfinals');
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('test') === 'true') {
+      const path = window.location.pathname.toLowerCase();
+      const isAr = path.includes('/ar') || (window as any).__LOCALE__ === 'ar';
+      if (isAr) {
+        setName('العرّاف');
+        setCalledOut('نواصري');
+        setStakes('ألبس قميص الهلال طوال اليوم');
+        setFirstGoalscorer('سالم الدوسري');
+        setScoreA('2');
+        setScoreB('0');
+      }
+    }
+  }, []);
+
+  useEffect(() => {
     if (initialPrediction) {
       setName(initialPrediction.name || '');
+      setCalledOut(initialPrediction.calledOut || '');
+      setStakes(initialPrediction.stakes || '');
       setPredictionType(initialPrediction.predictionType || 'match');
       setMatchId(initialPrediction.matchId || WORLD_CUP_MATCHES[0].id);
       setScoreA(initialPrediction.predictedScoreA || '0');
@@ -189,9 +280,18 @@ export default function ReceiptForm({ onSubmit, onUpgradeClick, isGolden, initia
       teamName: predictionType === 'team' ? teamName.trim() : undefined,
       teamMarket: predictionType === 'team' ? teamMarket.trim() : undefined,
       customTakeText: predictionType === 'custom' ? customTakeText.trim() : undefined,
+
+      // Brag social fields
+      calledOut: calledOut.trim() || undefined,
+      stakes: stakes.trim() || undefined,
+      shareLanguage,
     };
 
     onSubmit(newPrediction);
+    // If user wants golden, open the checkout immediately after generating the receipt
+    if (wantsGolden && !isGolden) {
+      setTimeout(() => onUpgradeClick(), 200);
+    }
   };
 
   const activeMatch = WORLD_CUP_MATCHES.find(m => m.id === matchId);
@@ -205,9 +305,9 @@ export default function ReceiptForm({ onSubmit, onUpgradeClick, isGolden, initia
         <div>
           <h2 className="font-sans font-black text-2xl tracking-tight text-black flex items-center gap-2">
             <Trophy className="text-yellow-500 h-6 w-6 stroke-[3]" />
-            STAMP YOUR PROPHECY
+            LOCK IN YOUR BRAG
           </h2>
-          <p className="text-xs text-zinc-650 mt-0.5 font-bold uppercase tracking-wide">Fill out predictions to generate your immutable thermal receipt.</p>
+          <p className="text-xs text-zinc-650 mt-0.5 font-bold uppercase tracking-wide">Seal your prediction before kickoff. Make it official.</p>
         </div>
         {isGolden ? (
           <span className="flex items-center gap-1.5 text-xs font-black uppercase text-yellow-600 bg-yellow-400/20 px-3 py-1.5 border-2 border-black rounded-xl animate-[pulse_2s_infinite]">
@@ -225,19 +325,54 @@ export default function ReceiptForm({ onSubmit, onUpgradeClick, isGolden, initia
       </div>
 
       <form onSubmit={handleFormSubmit} className="space-y-6">
-        {/* Name Field */}
-        <div>
-          <label className="block text-xs font-black text-black uppercase tracking-wider mb-2">
-            YOUR NAME / HANDLE <span className="text-zinc-500 font-normal text-[10px] lowercase">(optional)</span>
-          </label>
-          <input
-            type="text"
-            placeholder="e.g. Messi_Fan_99 (or press enter for Anonymous)"
-            maxLength={20}
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="w-full bg-stone-50 border-2 border-black rounded-xl px-4 py-3 text-sm text-black placeholder-zinc-400 font-bold focus:ring-4 focus:ring-yellow-400 focus:outline-hidden transition-all font-mono"
-          />
+        {/* Name + Call Out + Stakes row — the social layer */}
+        <div className="space-y-3">
+          {/* Your Name */}
+          <div>
+            <label className="block text-xs font-black text-black uppercase tracking-wider mb-2">
+              {t('nameLabel')} <span className="text-zinc-500 font-normal text-[10px] lowercase">{t('callingOutOption')}</span>
+            </label>
+            <input
+              type="text"
+              placeholder="e.g. Messi_Fan_99"
+              maxLength={20}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full bg-stone-50 border-2 border-black rounded-xl px-4 py-3 text-sm text-black placeholder-zinc-400 font-bold focus:ring-4 focus:ring-yellow-400 focus:outline-hidden transition-all font-mono"
+            />
+          </div>
+
+          {/* Call Out field — who are you calling out? */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-black text-black uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                <Target size={12} className="stroke-[3]" /> {t('calledOutLabel')}
+                <span className="text-zinc-500 font-normal text-[10px] lowercase normal-case">{t('callingOutOption')}</span>
+              </label>
+              <input
+                type="text"
+                placeholder={t('calledOutPlaceholder')}
+                maxLength={25}
+                value={calledOut}
+                onChange={(e) => setCalledOut(e.target.value)}
+                className="w-full bg-stone-50 border-2 border-black rounded-xl px-4 py-3 text-sm text-black placeholder-zinc-400 font-bold focus:ring-4 focus:ring-red-400 focus:outline-hidden transition-all font-mono"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-black text-black uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                <Flame size={12} className="stroke-[3]" /> {t('stakesLabel')}
+                <span className="text-zinc-500 font-normal text-[10px] lowercase normal-case">{t('stakesOption')}</span>
+              </label>
+              <input
+                type="text"
+                placeholder={t('stakesPlaceholder')}
+                maxLength={50}
+                value={stakes}
+                onChange={(e) => setStakes(e.target.value)}
+                className="w-full bg-stone-50 border-2 border-black rounded-xl px-4 py-3 text-sm text-black placeholder-zinc-400 font-bold focus:ring-4 focus:ring-orange-400 focus:outline-hidden transition-all font-mono"
+              />
+            </div>
+          </div>
         </div>
 
         {/* STEP 1: PICK PREDICTION TYPE */}
@@ -502,16 +637,49 @@ export default function ReceiptForm({ onSubmit, onUpgradeClick, isGolden, initia
             </div>
           )}
 
-          {/* MODE: CUSTOM TAKE */}
+          {/* MODE: CUSTOM TAKE — with Trash Talk Arsenal */}
           {predictionType === 'custom' && (
             <div className="space-y-4 animate-[fadeIn_0.2s_ease-out]">
+              {/* Trash Talk Arsenal Roulette */}
+              <div className="rounded-2xl border-2 border-black bg-stone-950 p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-yellow-400">🔥 TRASH TALK ARSENAL — TAP TO LOAD</span>
+                  <button
+                    type="button"
+                    onClick={shuffleRoulette}
+                    className="flex items-center gap-1 text-[10px] font-black uppercase text-zinc-400 hover:text-yellow-400 border border-zinc-700 hover:border-yellow-400 px-2 py-1 rounded-lg cursor-pointer transition-all"
+                  >
+                    <Shuffle size={11} /> Shuffle
+                  </button>
+                </div>
+                <div className="grid grid-cols-1 gap-1.5 max-h-64 overflow-y-auto pr-1">
+                  {roulettePool.map((brag, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => applyBrag(brag, idx)}
+                      className={`w-full text-left text-[11px] font-bold px-3 py-2 rounded-xl border transition-all cursor-pointer ${
+                        pulsedIndex === idx
+                          ? 'bg-yellow-400 border-black text-black scale-[1.02] font-black'
+                          : customTakeText === brag
+                            ? 'bg-zinc-800 border-yellow-500 text-yellow-300'
+                            : 'bg-zinc-900 border-zinc-700 text-zinc-300 hover:bg-zinc-800 hover:border-zinc-500 hover:text-white'
+                      }`}
+                    >
+                      {brag}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Custom text area */}
               <div>
                 <label className="block text-[10px] font-black text-zinc-750 uppercase tracking-widest mb-1.5">
-                  WILD / CUSTOM TAKE TEXT
+                  YOUR BRAG TEXT <span className="text-zinc-400 font-normal normal-case">(tap above or write your own)</span>
                 </label>
                 <textarea
                   required={predictionType === 'custom'}
-                  placeholder="e.g. Messi gets gold card penalty within 10 minutes and goes off on a legend run | Japan defeats Brazil in an epic penalty shootout shootout..."
+                  placeholder="e.g. Messi gets a hat-trick and Argentina wins 3-0. I've been saying this for months."
                   value={customTakeText}
                   onChange={(e) => setCustomTakeText(e.target.value)}
                   maxLength={120}
@@ -519,7 +687,7 @@ export default function ReceiptForm({ onSubmit, onUpgradeClick, isGolden, initia
                   className="w-full bg-stone-50 border-2 border-black rounded-xl px-4 py-3 text-xs text-black font-bold placeholder-zinc-400 focus:ring-4 focus:ring-yellow-400 focus:outline-hidden transition-all"
                 />
                 <div className="flex justify-between items-center text-[10px] text-zinc-500 font-mono mt-1">
-                  <span>Keep it punchy for best receipt alignment.</span>
+                  <span>Keep it punchy for maximum shareable impact.</span>
                   <span>{customTakeText.length}/120</span>
                 </div>
               </div>
@@ -625,16 +793,183 @@ export default function ReceiptForm({ onSubmit, onUpgradeClick, isGolden, initia
               Maximum items reached. Remove a line to add a new bold prediction.
             </p>
           )}
+
+          {/* Quick Brag chips — available for all prediction types */}
+          {boldPredictions.length < 3 && (
+            <div className="mt-2">
+              <p className="text-[9px] font-black uppercase tracking-widest text-zinc-500 mb-1.5">🎯 Quick add brags</p>
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  'First goal inside 20 min',
+                  'Red card issued',
+                  'Penalty scored',
+                  'Clean sheet',
+                  'Hat-trick',
+                  'VAR reversal',
+                  'Injury before HT',
+                  'Extra time',
+                ].map((chip) => (
+                  <button
+                    key={chip}
+                    type="button"
+                    onClick={() => {
+                      if (boldPredictions.length < 3 && !boldPredictions.includes(chip)) {
+                        setBoldPredictions([...boldPredictions, chip]);
+                      }
+                    }}
+                    className={`text-[10px] font-black uppercase px-2 py-1 rounded-lg border transition-all cursor-pointer ${
+                      boldPredictions.includes(chip)
+                        ? 'bg-black text-yellow-400 border-black'
+                        : 'bg-zinc-100 hover:bg-zinc-200 border-zinc-300 text-zinc-700 hover:border-black'
+                    }`}
+                  >
+                    {chip}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
+
+        {/* Golden Toggle — shown only when user is not already golden */}
+        {!isGolden && (
+          <label
+            htmlFor="golden-toggle"
+            className="flex items-center justify-between gap-3 p-4 rounded-2xl border-2 border-black bg-gradient-to-r from-yellow-50 to-amber-50 cursor-pointer hover:bg-yellow-100/60 transition-all group mt-2"
+          >
+            <div className="flex items-center gap-3">
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center border-2 border-black transition-colors ${
+                wantsGolden ? 'bg-yellow-400 text-black' : 'bg-white text-zinc-400'
+              }`}>
+                <Sparkles size={18} className={wantsGolden ? 'animate-pulse' : ''} />
+              </div>
+              <div>
+                <p className="text-xs font-black uppercase tracking-wider text-black leading-none">Unlock Brag Mode — Gold Card</p>
+                <p className="text-[10px] text-zinc-500 font-bold mt-0.5">+$1.99 · Why send paper to the group chat when you can send a 24k gold card?</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[9px] font-black uppercase text-amber-700 bg-yellow-200 border border-yellow-400 px-1.5 py-0.5 rounded-full tracking-wider">POPULAR</span>
+              <div
+                className={`relative w-11 h-6 rounded-full border-2 border-black transition-colors ${
+                  wantsGolden ? 'bg-yellow-400' : 'bg-zinc-200'
+                }`}
+              >
+                <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-black transition-all ${
+                  wantsGolden ? 'left-[22px]' : 'left-0.5'
+                }`} />
+              </div>
+            </div>
+            <input
+              id="golden-toggle"
+              type="checkbox"
+              className="sr-only"
+              checked={wantsGolden}
+              onChange={(e) => setWantsGolden(e.target.checked)}
+            />
+          </label>
+        )}
+
+        {/* === LANGUAGE SELECTOR — Regional WhatsApp Virality Toggle === */}
+        <div className="border-2 border-black rounded-2xl p-4 bg-stone-950 space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-black uppercase tracking-widest text-yellow-400">🌍 SHARE LANGUAGE — WHATSAPP MULTIPLIER</span>
+            <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">Pick your group chat</span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {LANG_OPTIONS.map((lang) => (
+              <button
+                key={lang.code}
+                type="button"
+                onClick={() => setShareLanguage(lang.code)}
+                className={`flex flex-col items-center gap-1 py-2.5 px-2 rounded-xl border-2 transition-all cursor-pointer ${
+                  shareLanguage === lang.code
+                    ? 'bg-yellow-400 border-black text-black scale-[1.02]'
+                    : 'bg-zinc-900 border-zinc-700 text-zinc-300 hover:border-zinc-500'
+                }`}
+              >
+                <span className="text-xl leading-none">{lang.flag}</span>
+                <span className="text-[10px] font-black uppercase tracking-wider leading-none">{lang.label}</span>
+                <span className={`text-[8px] font-bold uppercase leading-none ${shareLanguage === lang.code ? 'text-black/60' : 'text-zinc-600'}`}>{lang.hint}</span>
+              </button>
+            ))}
+          </div>
+          {shareLanguage !== 'en' && (
+            <p className="text-[9px] text-yellow-400 font-black uppercase tracking-wider text-center animate-[fadeIn_0.2s_ease-out]">
+              ✅ Share text will be generated in {LANG_OPTIONS.find(l => l.code === shareLanguage)?.label} — max WhatsApp impact
+            </p>
+          )}
+        </div>
+
+        {/* === UPSELL COMPARISON — Free vs Gold, right before the mint button === */}
+        {!isGolden && !wantsGolden && (
+          <div className="border-2 border-zinc-200 rounded-2xl overflow-hidden">
+            <div className="bg-zinc-50 px-4 py-2 border-b border-zinc-200">
+              <p className="text-[9px] font-black uppercase tracking-widest text-zinc-500 text-center">WHAT HITS DIFFERENT IN THE GROUP CHAT</p>
+            </div>
+            <div className="grid grid-cols-2 divide-x divide-zinc-200">
+              {/* Free receipt preview */}
+              <div className="p-4 space-y-2">
+                <p className="text-[9px] font-black uppercase tracking-wider text-zinc-500 text-center mb-2">FREE</p>
+                <div className="bg-stone-100 border border-stone-300 rounded-lg p-3 space-y-1.5">
+                  <div className="h-2 bg-zinc-300 rounded w-3/4" />
+                  <div className="h-1.5 bg-zinc-200 rounded w-full" />
+                  <div className="h-1.5 bg-zinc-200 rounded w-5/6" />
+                  <div className="h-1.5 bg-zinc-200 rounded w-2/3" />
+                  <div className="border-t border-dashed border-zinc-300 mt-2 pt-2 flex gap-1">
+                    <div className="h-1.5 bg-zinc-300 rounded flex-1" />
+                    <div className="h-1.5 bg-zinc-200 rounded w-1/3" />
+                  </div>
+                </div>
+                <p className="text-[8px] text-zinc-400 text-center font-bold uppercase">Paper receipt. Boring.</p>
+              </div>
+              {/* Gold card preview */}
+              <div className="p-4 space-y-2 bg-amber-50">
+                <p className="text-[9px] font-black uppercase tracking-wider text-amber-700 text-center mb-2">✨ GOLD $1.99</p>
+                <div className="relative bg-gradient-to-br from-yellow-300 via-amber-400 to-yellow-500 border-2 border-black rounded-lg p-3 space-y-1.5 overflow-hidden">
+                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/25 to-transparent animate-[shimmer_2s_ease-in-out_infinite]" />
+                  <div className="h-2 bg-black/30 rounded w-3/4" />
+                  <div className="h-1.5 bg-black/20 rounded w-full" />
+                  <div className="h-1.5 bg-black/20 rounded w-5/6" />
+                  <div className="h-1.5 bg-black/20 rounded w-2/3" />
+                  <div className="border-t border-black/20 mt-2 pt-2 flex gap-1">
+                    <div className="h-1.5 bg-black/25 rounded flex-1" />
+                    <div className="h-3 w-3 bg-black/40 rounded-full" />
+                  </div>
+                </div>
+                <p className="text-[8px] text-amber-700 text-center font-black uppercase">24k gold. Group chat domination.</p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Generate Receipt CTA */}
         <button
           type="submit"
-          className="w-full cursor-pointer py-4 px-6 text-sm font-sans font-black uppercase text-black bg-yellow-400 hover:bg-yellow-300 rounded-2xl border-4 border-black neo-shadow transition-all transform hover:-translate-y-0.5 active:translate-y-0 flex items-center justify-center gap-2 mt-4"
+          className={`w-full cursor-pointer py-4 px-6 text-sm font-sans font-black uppercase rounded-2xl border-4 border-black neo-shadow transition-all transform hover:-translate-y-0.5 active:translate-y-0 flex items-center justify-center gap-2 mt-2 ${
+            wantsGolden && !isGolden
+              ? 'bg-gradient-to-r from-yellow-400 to-amber-500 text-black hover:brightness-110'
+              : 'text-black bg-yellow-400 hover:bg-yellow-300'
+          }`}
         >
-          <span>MINT RECORD OF TRUTH</span>
-          <ChevronRight size={18} className="stroke-[3]" />
+          {wantsGolden && !isGolden ? (
+            <>
+              <Sparkles size={16} className="animate-pulse" />
+              <span>🔓 UNLOCK BRAG MODE — $1.99</span>
+              <ChevronRight size={18} className="stroke-[3]" />
+            </>
+          ) : (
+            <>
+              <span>🔒 LOCK IN MY BRAG</span>
+              <ChevronRight size={18} className="stroke-[3]" />
+            </>
+          )}
         </button>
+        {wantsGolden && !isGolden && (
+          <p className="text-center text-[10px] text-zinc-500 font-bold uppercase tracking-wider">
+            Secure payment • Only $1.99 during World Cup 2026
+          </p>
+        )}
       </form>
     </div>
   );

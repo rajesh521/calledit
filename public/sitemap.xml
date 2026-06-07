@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:xhtml="http://www.w3.org/1999/xhtml">
+  <!-- English / Default -->
+  <url>
+    <loc>https://bragmode.com/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://bragmode.com/" />
+    <xhtml:link rel="alternate" hreflang="es-MX" href="https://bragmode.com/es-MX" />
+    <xhtml:link rel="alternate" hreflang="id" href="https://bragmode.com/id" />
+    <xhtml:link rel="alternate" hreflang="ar" href="https://bragmode.com/ar" />
+    <xhtml:link rel="alternate" hreflang="en-KE" href="https://bragmode.com/en-KE" />
+    <xhtml:link rel="alternate" hreflang="en-ZA" href="https://bragmode.com/en-ZA" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://bragmode.com/" />
+    <changefreq>daily</changefreq>
+    <priority>1.0</priority>
+  </url>
+  <!-- Spanish (Mexico) -->
+  <url>
+    <loc>https://bragmode.com/es-MX</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://bragmode.com/" />
+    <xhtml:link rel="alternate" hreflang="es-MX" href="https://bragmode.com/es-MX" />
+    <xhtml:link rel="alternate" hreflang="id" href="https://bragmode.com/id" />
+    <xhtml:link rel="alternate" hreflang="ar" href="https://bragmode.com/ar" />
+    <xhtml:link rel="alternate" hreflang="en-KE" href="https://bragmode.com/en-KE" />
+    <xhtml:link rel="alternate" hreflang="en-ZA" href="https://bragmode.com/en-ZA" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://bragmode.com/" />
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <!-- Indonesian -->
+  <url>
+    <loc>https://bragmode.com/id</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://bragmode.com/" />
+    <xhtml:link rel="alternate" hreflang="es-MX" href="https://bragmode.com/es-MX" />
+    <xhtml:link rel="alternate" hreflang="id" href="https://bragmode.com/id" />
+    <xhtml:link rel="alternate" hreflang="ar" href="https://bragmode.com/ar" />
+    <xhtml:link rel="alternate" hreflang="en-KE" href="https://bragmode.com/en-KE" />
+    <xhtml:link rel="alternate" hreflang="en-ZA" href="https://bragmode.com/en-ZA" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://bragmode.com/" />
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <!-- Arabic -->
+  <url>
+    <loc>https://bragmode.com/ar</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://bragmode.com/" />
+    <xhtml:link rel="alternate" hreflang="es-MX" href="https://bragmode.com/es-MX" />
+    <xhtml:link rel="alternate" hreflang="id" href="https://bragmode.com/id" />
+    <xhtml:link rel="alternate" hreflang="ar" href="https://bragmode.com/ar" />
+    <xhtml:link rel="alternate" hreflang="en-KE" href="https://bragmode.com/en-KE" />
+    <xhtml:link rel="alternate" hreflang="en-ZA" href="https://bragmode.com/en-ZA" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://bragmode.com/" />
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <!-- Kenya (Sheng) -->
+  <url>
+    <loc>https://bragmode.com/en-KE</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://bragmode.com/" />
+    <xhtml:link rel="alternate" hreflang="es-MX" href="https://bragmode.com/es-MX" />
+    <xhtml:link rel="alternate" hreflang="id" href="https://bragmode.com/id" />
+    <xhtml:link rel="alternate" hreflang="ar" href="https://bragmode.com/ar" />
+    <xhtml:link rel="alternate" hreflang="en-KE" href="https://bragmode.com/en-KE" />
+    <xhtml:link rel="alternate" hreflang="en-ZA" href="https://bragmode.com/en-ZA" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://bragmode.com/" />
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <!-- South Africa (Lekker) -->
+  <url>
+    <loc>https://bragmode.com/en-ZA</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://bragmode.com/" />
+    <xhtml:link rel="alternate" hreflang="es-MX" href="https://bragmode.com/es-MX" />
+    <xhtml:link rel="alternate" hreflang="id" href="https://bragmode.com/id" />
+    <xhtml:link rel="alternate" hreflang="ar" href="https://bragmode.com/ar" />
+    <xhtml:link rel="alternate" hreflang="en-KE" href="https://bragmode.com/en-KE" />
+    <xhtml:link rel="alternate" hreflang="en-ZA" href="https://bragmode.com/en-ZA" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://bragmode.com/" />
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+  </url>
+</urlset>

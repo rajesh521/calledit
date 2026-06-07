@@ -129,12 +129,14 @@ export default function GlobalHub({ onSelectPrediction, currentPredictionId }: G
   };
 
   // 1. FILTER & CATEGORIZATION OF CENTRAL DATA STREAM
-  const pendingPredictions = predictions.filter(p => !p.status || p.status === 'pending');
+  const activePredictions = predictions.filter(p => !p.burned);
+
+  const pendingPredictions = activePredictions.filter(p => !p.status || p.status === 'pending');
   
-  const correctPredictions = predictions.filter(p => p.status === 'correct');
+  const correctPredictions = activePredictions.filter(p => p.status === 'correct');
   
   // Confidently Wrong ones sorted at top of the Milk wall!
-  const incorrectPredictions = predictions
+  const incorrectPredictions = activePredictions
     .filter(p => p.status === 'incorrect')
     .sort((a, b) => (b.confidence || 80) - (a.confidence || 80));
 
@@ -145,11 +147,11 @@ export default function GlobalHub({ onSelectPrediction, currentPredictionId }: G
       <div className="flex flex-col xl:flex-row xl:items-center justify-between border-b-4 border-black pb-5 gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <span className="px-2.5 py-1 bg-yellow-400 border border-black font-black text-[10px] rounded-sm uppercase tracking-wider">IMMUTABLE FAN ORACLE</span>
+            <span className="px-2.5 py-1 bg-yellow-400 border border-black font-black text-[10px] rounded-sm uppercase tracking-wider">THE GLOBAL TRASH TALK LEDGER</span>
             <div className="w-2 h-2 bg-emerald-500 rounded-full animate-ping"></div>
           </div>
           <h2 className="text-2xl sm:text-3xl font-black uppercase tracking-tight font-sans mt-1">
-            WORLD CUP TRUTH REGISTRY
+            THE HALL OF PROPHECY
           </h2>
         </div>
         
@@ -163,18 +165,18 @@ export default function GlobalHub({ onSelectPrediction, currentPredictionId }: G
                 : 'bg-stone-50 hover:bg-stone-100 text-black'
             }`}
           >
-            🔮 pre-match Locks ({pendingPredictions.length})
+            🔥 Locked Takes ({pendingPredictions.length})
           </button>
 
           <button
             onClick={() => setActiveTab('honor')}
             className={`px-3 py-2 font-black text-xs uppercase tracking-wider border-2 border-black rounded-xl cursor-pointer transition-all ${
               activeTab === 'honor' 
-                ? 'bg-black text-emerald-400 neo-shadow-sm' 
+                ? 'bg-black text-yellow-400 neo-shadow-sm' 
                 : 'bg-stone-50 hover:bg-stone-100 text-black'
             }`}
           >
-            🍷 Honor Roll ({correctPredictions.length})
+            🍷 Hall of Prophecy ({correctPredictions.length})
           </button>
           
           <button
@@ -229,8 +231,8 @@ export default function GlobalHub({ onSelectPrediction, currentPredictionId }: G
           <div className="space-y-6">
             <div className="bg-stone-50 border-2 border-black p-4 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-4">
               <div>
-                <h3 className="font-extrabold text-sm uppercase text-black">Pre-match locked receipts</h3>
-                <p className="text-xs text-zinc-500 font-bold uppercase tracking-wide">Secure pre-match locks before matches kick off. Time-stamped and fully immutable.</p>
+                <h3 className="font-extrabold text-sm uppercase">Active Bounties — Locked Before Kickoff</h3>
+                <p className="text-xs text-zinc-500 font-bold uppercase tracking-wide">Put your money where your mouth is. Every take here was locked before the whistle blew. Can't edit it. Can't delete it. It's out there.</p>
               </div>
               <div className="flex gap-4">
                 <div className="text-center">
@@ -253,7 +255,7 @@ export default function GlobalHub({ onSelectPrediction, currentPredictionId }: G
 
             {pendingPredictions.length === 0 ? (
               <div className="text-center py-16 bg-stone-50/50 border-2 border-dashed border-zinc-200 rounded-2xl">
-                <p className="text-xs text-zinc-500 font-black uppercase tracking-wider">No pending locks registered yet. Be the first to mint a record!</p>
+                <p className="text-xs text-zinc-500 font-black uppercase tracking-wider">No locked takes yet. Be the first to start some beef. Your mates are watching.</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -295,7 +297,7 @@ export default function GlobalHub({ onSelectPrediction, currentPredictionId }: G
                       </div>
 
                       <div className="flex justify-between items-center pt-2 border-t border-stone-200">
-                        <span className="text-[8.5px] text-zinc-400 font-black tracking-widest font-mono">LOCKED PRE-KICKOFF</span>
+                        <span className="text-[8.5px] text-zinc-400 font-black tracking-widest font-mono">LOCKED BEFORE KICKOFF — NO EDITS</span>
                         <button
                           onClick={() => {
                             onSelectPrediction(pred);
@@ -314,58 +316,68 @@ export default function GlobalHub({ onSelectPrediction, currentPredictionId }: G
           </div>
         )}
 
-        {/* VIEW 2: HONOR ROLL (WINE) */}
+        {/* VIEW 2: HALL OF PROPHECY (WINE — CASHED BRAGS) */}
         {activeTab === 'honor' && (
           <div className="space-y-6">
-            <div className="bg-emerald-50 border-2 border-emerald-500 text-emerald-950 p-4 rounded-xl">
-              <h3 className="font-extrabold text-sm uppercase">🍷 The Certified Legends Honor Roll</h3>
-              <p className="text-xs font-medium uppercase tracking-wide opacity-90">Every single receipt in this section has been verified as 100% correct by final match whistle. Legends of Truth.</p>
+            <div className="bg-gradient-to-r from-yellow-400 to-amber-400 border-4 border-black text-black p-4 rounded-xl flex items-center gap-3">
+              <Trophy size={28} className="text-black fill-black shrink-0" />
+              <div>
+                <h3 className="font-extrabold text-sm uppercase flex items-center gap-2">
+                  👑 Hall of Prophecy — Cashed Brags
+                </h3>
+                <p className="text-xs font-bold uppercase tracking-wide opacity-80">Every brag in this section was locked before kickoff and aged like fine wine. These people called it. Permanently pinned.</p>
+              </div>
             </div>
 
             {correctPredictions.length === 0 ? (
               <div className="text-center py-16 bg-stone-50/50 border-2 border-dashed border-zinc-200 rounded-2xl">
-                <p className="text-xs text-zinc-500 font-black uppercase tracking-wider">No Correct predictions resolved yet. Simulate kickoff results in kickoff Sim tab!</p>
+                <p className="text-xs text-zinc-500 font-black uppercase tracking-wider">No cashed brags yet. Simulate a match result in Kickoff Sim — and watch the champions emerge.</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {correctPredictions.map((pred) => {
                   const confidence = pred.confidence || 80;
                   return (
-                    <div key={pred.id} className="border-4 border-emerald-600 p-5 rounded-2xl bg-emerald-50/20 neo-shadow-sm flex flex-col justify-between space-y-4">
+                    <div key={pred.id} className="border-4 border-yellow-400 p-5 rounded-2xl bg-gradient-to-br from-yellow-50 to-amber-50 neo-shadow flex flex-col justify-between space-y-4 relative overflow-hidden">
+                      {/* Crown pin badge */}
+                      <div className="absolute top-3 right-3 bg-yellow-400 border-2 border-black text-black px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-widest flex items-center gap-1">
+                        👑 CASHED
+                      </div>
+
                       <div>
                         <div className="flex justify-between items-start">
                           <div>
-                            <span className="font-black text-xs uppercase tracking-tight text-emerald-950 block">{pred.name}</span>
-                            <span className="text-[9px] text-emerald-800 font-bold uppercase font-mono tracking-widest block">AGED LIKE WINE 🍷</span>
+                            <span className="font-black text-xs uppercase tracking-tight text-black block">{pred.name}</span>
+                            <span className="text-[9px] text-amber-700 font-bold uppercase font-mono tracking-widest block">🍷 AGED LIKE WINE — VERIFIED</span>
                           </div>
-                          <span className="px-2 py-0.5 bg-emerald-600 text-white border border-black rounded text-[9px] font-black uppercase">
-                            {confidence}% CONFIDENT
+                          <span className="px-2 py-0.5 bg-black text-yellow-400 border border-black rounded text-[9px] font-black uppercase">
+                            {confidence}% CALLED IT
                           </span>
                         </div>
 
-                        <div className="bg-white border-2 border-emerald-600 rounded-xl p-3 mt-3">
+                        <div className="bg-white border-2 border-yellow-400 rounded-xl p-3 mt-3">
                           <span className="text-xs font-black block text-stone-900 leading-normal">{getMatchLabel(pred).replace(/^[^\s]+\s*/, '')}</span>
                           <div className="flex justify-between items-center mt-2.5 pt-2 border-t border-dashed border-stone-200">
-                            <span className="text-xs font-mono font-bold text-zinc-500">PREDICTION SCORE:</span>
-                            <span className="font-extrabold text-emerald-600 text-sm tracking-widest">{pred.predictedScoreA} - {pred.predictedScoreB}</span>
+                            <span className="text-xs font-mono font-bold text-zinc-500">CALLED SCORE:</span>
+                            <span className="font-extrabold text-yellow-600 text-sm tracking-widest">{pred.predictedScoreA} - {pred.predictedScoreB}</span>
                           </div>
                           <div className="flex justify-between items-center mt-1 text-[10px] text-zinc-600 font-mono">
                             <span>Scorer: <strong className="text-black">{pred.firstGoalscorer}</strong></span>
-                            <span className="text-emerald-700 font-black">🎯 FULL HIT</span>
+                            <span className="text-yellow-700 font-black">👑 NAILED IT</span>
                           </div>
                         </div>
                       </div>
 
-                      <div className="flex justify-between items-center pt-2 border-t border-emerald-200">
-                        <span className="text-[8.5px] text-emerald-700 font-black tracking-widest font-mono">100% CRYSTAL VERIFIED</span>
+                      <div className="flex justify-between items-center pt-2 border-t border-yellow-300">
+                        <span className="text-[8.5px] text-amber-700 font-black tracking-widest font-mono">🔒 PINNED TO HALL OF PROPHECY</span>
                         <button
                           onClick={() => {
                             onSelectPrediction(pred);
                             window.scrollTo({ top: 0, behavior: 'smooth' });
                           }}
-                          className="px-3.5 py-1 bg-black text-white hover:text-yellow-400 font-black text-[9px] uppercase rounded-lg border border-black transition-all font-mono"
+                          className="px-3.5 py-1 bg-black hover:bg-zinc-900 text-yellow-400 font-black text-[9px] uppercase rounded-lg border border-black transition-all font-mono"
                         >
-                          🔍 VIEW LINK
+                          👑 VIEW BRAG
                         </button>
                       </div>
                     </div>
@@ -380,13 +392,13 @@ export default function GlobalHub({ onSelectPrediction, currentPredictionId }: G
         {activeTab === 'shame' && (
           <div className="space-y-6">
             <div className="bg-red-50 border-2 border-red-500 text-red-950 p-4 rounded-xl">
-              <h3 className="font-extrabold text-sm uppercase">🥛 Confidently wrong shame wall</h3>
-              <p className="text-xs font-medium uppercase tracking-wide opacity-90">"the funniest content on the internet is fans being confidently wrong." Sorted by highest level of overconfidence.</p>
+              <h3 className="font-extrabold text-sm uppercase">🥛 Wall of Shame — Confidently, Embarrassingly Wrong</h3>
+              <p className="text-xs font-medium uppercase tracking-wide opacity-90">These people went on record. They were very, very confident. The final whistle did not agree. Sorted by how badly they missed.</p>
             </div>
 
             {incorrectPredictions.length === 0 ? (
               <div className="text-center py-16 bg-stone-50/50 border-2 border-dashed border-zinc-200 rounded-2xl">
-                <p className="text-xs text-zinc-500 font-black uppercase tracking-wider">Clean slate! No receipts have spoiled... yet. Simulate chokes in kickoff Sim tab!</p>
+                <p className="text-xs text-zinc-500 font-black uppercase tracking-wider">Clean slate! Nobody has taken an L yet. Simulate some match results to watch the carnage unfold.</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

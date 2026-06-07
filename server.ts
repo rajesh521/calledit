@@ -4,8 +4,8 @@ import { createServer as createViteServer } from "vite";
 import { DodoPayments } from "dodopayments";
 import dotenv from "dotenv";
 import fs from "fs";
-import { initializeApp } from "firebase/app";
-import { initializeFirestore, collection, doc, getDocs, setDoc, deleteDoc } from "firebase/firestore";
+import { createClient } from "@supabase/supabase-js";
+import ws from "ws";
 import sharp from "sharp";
 
 // Load environment variables
@@ -17,58 +17,56 @@ let viteInstance: any = null;
 
 app.use(express.json());
 
-// Initialize Firestore from config json
-const firebaseConfigPath = path.join(process.cwd(), "firebase-applet-config.json");
-const firebaseConfig = JSON.parse(fs.readFileSync(firebaseConfigPath, "utf-8"));
+const COUNTRY_LOCALE_MAP: Record<string, string> = {
+  MX: 'es-MX',
+  ID: 'id',
+  SA: 'ar',
+  AE: 'ar',
+  KE: 'en-KE',
+  ZA: 'en-ZA'
+};
 
-const firebaseApp = initializeApp(firebaseConfig);
-const db = initializeFirestore(firebaseApp, {
-  experimentalForceLongPolling: true,
-}, firebaseConfig.firestoreDatabaseId);
+const LOCALES = ['es-MX', 'id', 'ar', 'en-KE', 'en-ZA'];
 
-enum OperationType {
-  CREATE = 'create',
-  UPDATE = 'update',
-  DELETE = 'delete',
-  LIST = 'list',
-  GET = 'get',
-  WRITE = 'write',
-}
-
-interface FirestoreErrorInfo {
-  error: string;
-  operationType: OperationType;
-  path: string | null;
-  authInfo: {
-    userId?: string | null;
-    email?: string | null;
-    emailVerified?: boolean | null;
-    isAnonymous?: boolean | null;
-    tenantId?: string | null;
-    providerInfo?: {
-      providerId?: string | null;
-      email?: string | null;
-    }[];
+// Middleware to detect country and locale based on headers/paths
+app.use((req, res, next) => {
+  if (req.path.includes('.') || req.path.startsWith('/api')) {
+    return next();
   }
+  
+  const countryHeader = req.headers['x-vercel-ip-country'] || req.headers['X-Vercel-IP-Country'] || req.headers['x-country'];
+  const country = typeof countryHeader === 'string' ? countryHeader.trim().toUpperCase() : '';
+  
+  const pathParts = req.path.split('/');
+  const firstPathPart = pathParts[1];
+  
+  const currentLocale = LOCALES.find(l => l.toLowerCase() === firstPathPart?.toLowerCase());
+  
+  if (currentLocale) {
+    req.url = req.url.replace(new RegExp(`^\\/${firstPathPart}(\\/|\\?|$)`, 'i'), '/$1') || '/';
+    (req as any).detectedLocale = currentLocale;
+  } else if (req.path === '/' || req.path === '') {
+    const resolvedLocale = COUNTRY_LOCALE_MAP[country] || 'en';
+    (req as any).detectedLocale = resolvedLocale;
+  }
+  
+  next();
+});
+
+// Initialize Supabase client
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!supabaseUrl || !supabaseKey) {
+  console.error("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set in .env");
+  process.exit(1);
 }
 
-function handleFirestoreError(error: any, operationType: OperationType, path: string | null) {
-  const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
-    authInfo: {
-      userId: null,
-      email: null,
-      emailVerified: null,
-      isAnonymous: null,
-      tenantId: null,
-      providerInfo: []
-    },
-    operationType,
-    path
-  };
-  console.error("Firestore Error: ", JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
-}
+const supabase = createClient(supabaseUrl, supabaseKey, {
+  realtime: {
+    transport: ws as any,
+  },
+});
 
 // Seed datasets to make the app alive of startup!
 const SEED_PREDICTIONS = [
@@ -166,89 +164,81 @@ const SEED_OUTCOMES = [
   }
 ];
 
-// Seed firestore collections if they are entirely blank (clean system cold start)
-async function seedFirestoreIfEmpty() {
-  console.log("Checking if Firestore needs seeding...");
+// Seed Supabase tables if they are entirely empty (clean cold start)
+async function seedSupabaseIfEmpty() {
+  console.log("Checking if Supabase needs seeding...");
   try {
-    const predSnap = await getDocs(collection(db, "predictions"));
-    if (predSnap.empty) {
-      console.log("Seeding SEED_PREDICTIONS into Firestore `predictions` collection...");
-      for (const pred of SEED_PREDICTIONS) {
-        await setDoc(doc(db, "predictions", pred.id), pred);
-      }
+    const { data: preds, error: predErr } = await supabase.from("predictions").select("id");
+    if (predErr) throw predErr;
+    if (!preds || preds.length === 0) {
+      console.log("Seeding SEED_PREDICTIONS into Supabase `predictions` table...");
+      const { error } = await supabase.from("predictions").upsert(SEED_PREDICTIONS);
+      if (error) throw error;
     }
-    const outcomeSnap = await getDocs(collection(db, "outcomes"));
-    if (outcomeSnap.empty) {
-      console.log("Seeding SEED_OUTCOMES into Firestore `outcomes` collection...");
-      for (const outcome of SEED_OUTCOMES) {
-        await setDoc(doc(db, "outcomes", outcome.matchId), outcome);
-      }
+
+    const { data: outcomes, error: outcomeErr } = await supabase.from("outcomes").select("matchId");
+    if (outcomeErr) throw outcomeErr;
+    if (!outcomes || outcomes.length === 0) {
+      console.log("Seeding SEED_OUTCOMES into Supabase `outcomes` table...");
+      const { error } = await supabase.from("outcomes").upsert(SEED_OUTCOMES);
+      if (error) throw error;
     }
   } catch (err: any) {
-    if (err && (err.code === "permission-denied" || String(err).includes("permission") || String(err).includes("Permission"))) {
-      handleFirestoreError(err, OperationType.GET, "predictions");
-    }
-    console.error("Error during Firestore seeding:", err);
+    console.error("Error during Supabase seeding:", err);
   }
 }
 
-// Helper to safely read from Firestore
+// Helper to safely read predictions from Supabase
 async function readPredictions(): Promise<any[]> {
   try {
-    const snap = await getDocs(collection(db, "predictions"));
-    if (snap.empty) {
-      await seedFirestoreIfEmpty();
-      const freshSnap = await getDocs(collection(db, "predictions"));
-      return freshSnap.docs.map(d => d.data());
+    const { data, error } = await supabase.from("predictions").select("*");
+    if (error) throw error;
+    if (!data || data.length === 0) {
+      await seedSupabaseIfEmpty();
+      const { data: fresh, error: freshErr } = await supabase.from("predictions").select("*");
+      if (freshErr) throw freshErr;
+      return fresh || SEED_PREDICTIONS;
     }
-    return snap.docs.map(d => d.data());
+    return data;
   } catch (err: any) {
-    if (err && (err.code === "permission-denied" || String(err).includes("permission") || String(err).includes("Permission"))) {
-      handleFirestoreError(err, OperationType.LIST, "predictions");
-    }
-    console.error("Error reading predictions from Firestore:", err);
+    console.error("Error reading predictions from Supabase:", err);
     return SEED_PREDICTIONS;
   }
 }
 
 async function writePrediction(pred: any) {
   try {
-    await setDoc(doc(db, "predictions", pred.id), pred);
+    const { error } = await supabase.from("predictions").upsert(pred);
+    if (error) throw error;
   } catch (err: any) {
-    if (err && (err.code === "permission-denied" || String(err).includes("permission") || String(err).includes("Permission"))) {
-      handleFirestoreError(err, OperationType.WRITE, `predictions/${pred.id}`);
-    }
-    console.error("Error writing prediction to Firestore:", err);
+    console.error("Error writing prediction to Supabase:", err);
   }
 }
 
-// Helper to safely read outcomes from Firestore
+// Helper to safely read outcomes from Supabase
 async function readOutcomes(): Promise<any[]> {
   try {
-    const snap = await getDocs(collection(db, "outcomes"));
-    if (snap.empty) {
-      await seedFirestoreIfEmpty();
-      const freshSnap = await getDocs(collection(db, "outcomes"));
-      return freshSnap.docs.map(d => d.data());
+    const { data, error } = await supabase.from("outcomes").select("*");
+    if (error) throw error;
+    if (!data || data.length === 0) {
+      await seedSupabaseIfEmpty();
+      const { data: fresh, error: freshErr } = await supabase.from("outcomes").select("*");
+      if (freshErr) throw freshErr;
+      return fresh || SEED_OUTCOMES;
     }
-    return snap.docs.map(d => d.data());
+    return data;
   } catch (err: any) {
-    if (err && (err.code === "permission-denied" || String(err).includes("permission") || String(err).includes("Permission"))) {
-      handleFirestoreError(err, OperationType.LIST, "outcomes");
-    }
-    console.error("Error reading outcomes from Firestore:", err);
+    console.error("Error reading outcomes from Supabase:", err);
     return SEED_OUTCOMES;
   }
 }
 
 async function writeOutcome(outcome: any) {
   try {
-    await setDoc(doc(db, "outcomes", outcome.matchId), outcome);
+    const { error } = await supabase.from("outcomes").upsert(outcome);
+    if (error) throw error;
   } catch (err: any) {
-    if (err && (err.code === "permission-denied" || String(err).includes("permission") || String(err).includes("Permission"))) {
-      handleFirestoreError(err, OperationType.WRITE, `outcomes/${outcome.matchId}`);
-    }
-    console.error("Error writing outcome to Firestore:", err);
+    console.error("Error writing outcome to Supabase:", err);
   }
 }
 
@@ -299,25 +289,21 @@ function getDodoClient(): DodoPayments | null {
 // Reset simulation data back to fresh seed
 app.post("/api/reset-simulation", async (req, res) => {
   try {
-    // Delete existing records to perform a true system reset in Firestore
-    const predSnap = await getDocs(collection(db, "predictions"));
-    for (const d of predSnap.docs) {
-      await deleteDoc(doc(db, "predictions", d.id));
-    }
-    const outcomeSnap = await getDocs(collection(db, "outcomes"));
-    for (const d of outcomeSnap.docs) {
-      await deleteDoc(doc(db, "outcomes", d.id));
-    }
-    
-    // Seed them cleanly
-    for (const pred of SEED_PREDICTIONS) {
-      await setDoc(doc(db, "predictions", pred.id), pred);
-    }
-    for (const outcome of SEED_OUTCOMES) {
-      await setDoc(doc(db, "outcomes", outcome.matchId), outcome);
-    }
-    
-    res.json({ success: true, message: "Firestore database resynchronized to initial seed conditions!" });
+    // Delete all existing records from Supabase
+    const { error: delPredErr } = await supabase.from("predictions").delete().neq("id", "");
+    if (delPredErr) throw delPredErr;
+
+    const { error: delOutcomeErr } = await supabase.from("outcomes").delete().neq("matchId", "");
+    if (delOutcomeErr) throw delOutcomeErr;
+
+    // Reseed cleanly
+    const { error: seedPredErr } = await supabase.from("predictions").upsert(SEED_PREDICTIONS);
+    if (seedPredErr) throw seedPredErr;
+
+    const { error: seedOutcomeErr } = await supabase.from("outcomes").upsert(SEED_OUTCOMES);
+    if (seedOutcomeErr) throw seedOutcomeErr;
+
+    res.json({ success: true, message: "Supabase database resynchronized to initial seed conditions!" });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -332,6 +318,9 @@ app.get("/api/predictions", async (req, res) => {
     
     // Always compute live outcome resolutions
     list = list.map(p => getResolvedStatus(p, outcomesList));
+    
+    // Always filter out burned predictions from the public feed
+    list = list.filter(p => !p.burned);
     
     // Filter by search query (match prophet name, custom team name, etc.)
     if (search) {
@@ -435,6 +424,26 @@ app.post("/api/outcomes", async (req, res) => {
     }
     
     res.json({ success: true, outcome: outcomeRecord });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Burn the evidence — Coward's Way Out ($0.99)
+// Marks a prediction as burned so it is filtered from the public feed
+app.post("/api/burn", async (req, res) => {
+  try {
+    const { predictionId } = req.body;
+    if (!predictionId) {
+      return res.status(400).json({ error: "predictionId is required" });
+    }
+    const list = await readPredictions();
+    const pred = list.find(p => p.id === predictionId);
+    if (!pred) {
+      return res.status(404).json({ error: "Prediction not found" });
+    }
+    await writePrediction({ ...pred, burned: true });
+    res.json({ success: true, message: "Evidence incinerated. Your enemies will never know. 😈" });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -548,6 +557,44 @@ app.post("/api/dodo/create-checkout", async (req, res) => {
   }
 });
 
+// GET endpoint to fetch localized product pricing and payment methods from Dodo Payments
+app.get("/api/dodo/pricing", async (req, res) => {
+  const country = String(req.query.country || "").trim().toUpperCase();
+  const client = getDodoClient();
+
+  const fallbackPrices: Record<string, { price: string; currency: string; amount: number; paymentMethods: string[] }> = {
+    MX: { price: "$39 MXN", currency: "MXN", amount: 39, paymentMethods: ["OXXO", "Card"] },
+    ID: { price: "Rp 30.000 IDR", currency: "IDR", amount: 30000, paymentMethods: ["GrabPay", "Bank Transfer"] },
+    KE: { price: "KSh 260 KES", currency: "KES", amount: 260, paymentMethods: ["M-Pesa", "Card"] },
+    ZA: { price: "R 37 ZAR", currency: "ZAR", amount: 37, paymentMethods: ["Visa", "Mastercard"] },
+    SA: { price: "7.50 SAR", currency: "SAR", amount: 7.50, paymentMethods: ["mada", "Card"] },
+    AE: { price: "7.30 AED", currency: "AED", amount: 7.30, paymentMethods: ["Card", "Apple Pay"] }
+  };
+
+  const defaultPrice = { price: "$1.99 USD", currency: "USD", amount: 1.99, paymentMethods: ["Card", "Google Pay", "Apple Pay"] };
+
+  const resolved = fallbackPrices[country] || defaultPrice;
+
+  if (client) {
+    try {
+      const productId = process.env.DODO_PAYMENTS_GOLD_PRODUCT_ID || "p_gold_parlay";
+      const product = await client.products.retrieve(productId);
+      if (product) {
+        // Dodo Payments products might have price/currency properties depending on version
+        const apiPrice = (product as any).price;
+        const apiCurrency = (product as any).currency;
+        if (apiPrice && apiCurrency) {
+          // If the product currency matches the localized request, we could use it dynamically.
+        }
+      }
+    } catch (e) {
+      console.warn("Dodo Payments products.retrieve failed, using fallback pricing data:", e);
+    }
+  }
+
+  res.json(resolved);
+});
+
 function decodePredictionSafe(encodedStr: string): any | null {
   try {
     const decodedUri = decodeURIComponent(encodedStr);
@@ -629,170 +676,373 @@ function getMatchHeadline(pred: any) {
   return pred.customMatch || "WORLD CUP MATCH";
 }
 
-function generateReceiptSvg(pred: any): string {
+function generateRedactedReceiptSvg(pred: any, locale: string = 'en'): string {
+  const id = pred.id || "BRG-TEMP";
+
+  let headingText = "[ EVIDENCE REDACTED ]";
+  let subText = "COWARD'S WAY OUT PROTECTION ACTIVE";
+  let descText1 = "This brag aged like milk and was deleted";
+  let descText2 = "from the global Wall of Shame.";
+  let descText3 = "Your enemies will never find it. The record is clean. 😈";
+
+  if (locale === 'es-MX') {
+    headingText = "[ ¡NO MAMES! SE RAJÓ ]";
+    subText = "PROTECCIÓN DEL COBARDE ACTIVADA";
+    descText1 = "Esta payasada se canceló de la tercera cuerda";
+    descText2 = "para evitar la humillación pública.";
+    descText3 = "Tu rival nunca sabrá que perdiste la máscara. 😈";
+  } else if (locale === 'id') {
+    headingText = "[ KENA MENTAL / DI-REDAKSI ]";
+    subText = "PROTEKSI DIKONTRAK COWARD";
+    descText1 = "Brag ini kena mental dan langsung didelete";
+    descText2 = "dari Wall of Shame global.";
+    descText3 = "Musuh lu gak bakal nemu buktinya. Aman bos! 😈";
+  } else if (locale === 'en-KE') {
+    headingText = "[ EVIDENCE IMEREDACTIWA ]";
+    subText = "COWARD'S WAY OUT IS ACTIVE, MZEE";
+    descText1 = "Hii brag ilienda na maji ikafutwa";
+    descText2 = "kwa ile Wall of Shame ya dunia.";
+    descText3 = "Maboy wako hawatowahi ipata. Uko safe! 😈";
+  } else if (locale === 'en-ZA') {
+    headingText = "[ SHAME DELETED, BRU ]";
+    subText = "COWARD PROTECTION ACTIVE";
+    descText1 = "This prediction choked hard and was deleted";
+    descText2 = "from the global Wall of Shame.";
+    descText3 = "The chinas will never find it. Clean jol. 😈";
+  } else if (locale === 'ar') {
+    headingText = "[ تم حرق الدليل ]";
+    subText = "تفعيل حماية الهروب من الفضيحة";
+    descText1 = "هذا التوقع صاح واعتزل وتم حذفه";
+    descText2 = "من جدار العار الكروي العالمي.";
+    descText3 = "خصومك لن يعثروا عليه أبدًا. الجبهة سليمة! 😈";
+  }
+
+  return `
+    <svg width="1080" height="1920" viewBox="0 0 1080 1920" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="redactGrad" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="#140505" />
+          <stop offset="100%" stop-color="#050000" />
+        </linearGradient>
+      </defs>
+      <rect width="1080" height="1920" fill="url(#redactGrad)" />
+      <rect x="30" y="30" width="1020" height="1860" fill="none" stroke="#EF4444" stroke-width="4" stroke-dasharray="16,12" rx="12" opacity="0.6" />
+      <text x="540" y="450" font-family="'Arial Black', sans-serif" font-weight="900" font-size="120" fill="#EF4444" text-anchor="middle">🔥</text>
+      <text x="540" y="620" font-family="'Arial Black', sans-serif" font-weight="900" font-size="58" fill="#EF4444" text-anchor="middle" letter-spacing="4">${headingText}</text>
+      <text x="540" y="740" font-family="'Courier New', monospace" font-weight="700" font-size="26" fill="#888888" text-anchor="middle" letter-spacing="2">${subText}</text>
+      <line x1="100" y1="880" x2="980" y2="880" stroke="#EF4444" stroke-width="4" opacity="0.3" />
+      <text x="540" y="1030" font-family="'Courier New', monospace" font-weight="700" font-size="30" fill="#FFFFFF" text-anchor="middle">${descText1}</text>
+      <text x="540" y="1090" font-family="'Courier New', monospace" font-weight="700" font-size="30" fill="#FFFFFF" text-anchor="middle">${descText2}</text>
+      <text x="540" y="1200" font-family="'Courier New', monospace" font-weight="700" font-size="22" fill="#666666" text-anchor="middle">${descText3}</text>
+      <line x1="100" y1="1320" x2="980" y2="1320" stroke="#EF4444" stroke-width="4" opacity="0.3" />
+      <text x="540" y="1480" font-family="'Courier New', monospace" font-weight="700" font-size="24" fill="#444444" text-anchor="middle" letter-spacing="4">bragmode.com • BRAGGING RIGHTS ENGINE</text>
+      <text x="540" y="1540" font-family="'Courier New', monospace" font-weight="700" font-size="20" fill="#333333" text-anchor="middle">BRG-${id}</text>
+    </svg>
+  `;
+}
+
+function generateReceiptSvg(pred: any, locale: string = 'en'): string {
+  if (pred.burned) {
+    return generateRedactedReceiptSvg(pred, locale);
+  }
+
   const name = (pred.name || "Anonymous").toUpperCase();
   const timestamp = pred.timestamp || "06/05/2026 12:00:00 PM";
-  const id = pred.id || "ROT-TEMP";
+  const id = pred.id || "BRG-TEMP";
   const confidence = pred.confidence || 80;
-  
+  const calledOut = pred.calledOut ? pred.calledOut.trim() : null;
+
   // Decide type of prediction and get text
   let summary = "";
   const typeStr = pred.predictionType || 'match';
   if (typeStr === 'match') {
     summary = `PREDICTED SCORE: ${pred.predictedScoreA} - ${pred.predictedScoreB}`;
   } else if (typeStr === 'player') {
-    summary = `${pred.playerName || 'Messi'} to get ${pred.playerValue || '0'} ${pred.playerMarket || 'Goals'}`;
+    summary = `${pred.playerName || 'Messi'} ${pred.playerValue || '0'} ${pred.playerMarket || 'Goals'}`;
   } else if (typeStr === 'team') {
-    summary = `${pred.teamName || 'Brazil'} to get ${pred.teamMarket || 'Victory'}`;
+    summary = `${pred.teamName || 'Brazil'} ${pred.teamMarket || 'wins'}`;
   } else {
-    summary = pred.customTakeText || "Custom Prophecy Take";
+    summary = pred.customTakeText || "Custom Hot Take";
   }
+
+  // Truncate for card readability
+  const headline = getMatchHeadline(pred).toUpperCase();
+  const summaryShort = summary.length > 52 ? summary.substring(0, 50).toUpperCase() + "..." : summary.toUpperCase();
+  const calledOutLine = calledOut ? `@${calledOut.replace(/^@/, '')}` : null;
 
   // Check state
   const isWrong = pred.status === 'incorrect';
   const isCorrect = pred.status === 'correct';
-  
-  let stampHtml = "";
-  let paperBg = "#fbfaf5";
-  let borderStroke = "#1c1917";
-  
-  if (isWrong) {
-    // Red rejected rubber stamp
-    stampHtml = `
-      <g transform="translate(420, 260) rotate(-15)">
-        <rect x="-100" y="-35" width="200" height="70" rx="10" fill="none" stroke="#EF4444" stroke-width="4" stroke-dasharray="2,2" opacity="0.85" />
-        <rect x="-96" y="-31" width="192" height="62" rx="8" fill="none" stroke="#EF4444" stroke-width="2" opacity="0.85" />
-        <text x="0" y="-4" font-family="'Space Grotesk', sans-serif" font-weight="900" font-size="18" fill="#EF4444" text-anchor="middle" opacity="0.85">REJECTED</text>
-        <text x="0" y="16" font-family="'JetBrains Mono', monospace" font-weight="800" font-size="9" fill="#EF4444" text-anchor="middle" letter-spacing="1" opacity="0.85">AGED LIKE MILK 🥛</text>
-      </g>
-    `;
-  } else if (isCorrect) {
-    // Emerald green verified stamp
-    stampHtml = `
-      <g transform="translate(420, 260) rotate(-12)">
-        <rect x="-100" y="-35" width="200" height="70" rx="10" fill="none" stroke="#10B981" stroke-width="4" stroke-dasharray="2,2" opacity="0.85" />
-        <rect x="-96" y="-31" width="192" height="62" rx="8" fill="none" stroke="#10B981" stroke-width="2" opacity="0.85" />
-        <text x="0" y="-4" font-family="'Space Grotesk', sans-serif" font-weight="900" font-size="16" fill="#10B981" text-anchor="middle" opacity="0.85">AGED LIKE WINE</text>
-        <text x="0" y="16" font-family="'JetBrains Mono', monospace" font-weight="800" font-size="9" fill="#10B981" text-anchor="middle" letter-spacing="1" opacity="0.85">🍷 100% CORRECT</text>
-      </g>
-    `;
-  } else {
-    // Pending yellow/orange stamp
-    stampHtml = `
-      <g transform="translate(420, 260) rotate(-8)">
-        <rect x="-100" y="-35" width="200" height="70" rx="10" fill="none" stroke="#F59E0B" stroke-width="4" opacity="0.8" />
-        <text x="0" y="2" font-family="'Space Grotesk', sans-serif" font-weight="900" font-size="15" fill="#F59E0B" text-anchor="middle">ACTIVE ORACLE</text>
-        <text x="0" y="18" font-family="'JetBrains Mono', monospace" font-weight="800" font-size="9" fill="#F59E0B" text-anchor="middle" letter-spacing="1">⏳ UNRESOLVED</text>
-      </g>
-    `;
+
+  // Color palette per state
+  const bgColor = isWrong ? '#0f0505' : isCorrect ? '#020f07' : '#080808';
+  const accentColor = isWrong ? '#EF4444' : isCorrect ? '#10B981' : '#F59E0B';
+  const accentLight = isWrong ? '#FCA5A5' : isCorrect ? '#6EE7B7' : '#FCD34D';
+  const borderColor = isWrong ? '#991B1B' : isCorrect ? '#065F46' : '#92400E';
+
+  // Localized Labels for Metadata grid
+  let labelProphet = "PROPHET";
+  let labelConfidence = "CONFIDENCE";
+  let labelSealed = "SEALED";
+  let labelBragId = "BRAG ID";
+  let footerLine1 = "MAKE YOUR BRAG OFFICIAL — PROOF YOU SAID IT FIRST";
+  let footerLine2 = "DO NOT ATTEMPT TO RECONSTRUCT HISTORY";
+  let footerLine3 = "AGED LIKE WINE OR AGED LIKE MILK — THE RECORD STANDS.";
+  let callOutLabel = "I AM CALLING OUT:";
+  let callItLabel = "🔒 I AM CALLING IT:";
+  let engineTag = "WORLD CUP 2026 • BRAGGING RIGHTS ENGINE";
+
+  if (locale === 'es-MX') {
+    labelProphet = "PROFETIZADOR";
+    labelConfidence = "CONFIANZA";
+    labelSealed = "SELLADO";
+    labelBragId = "ID DEL BRAG";
+    footerLine1 = "HAZ OFICIAL TU BRAG — PRUEBA DE QUE LO DIJISTE ANTES";
+    footerLine2 = "NO INTENTES CAMBIAR EL PASADO";
+    footerLine3 = "COMO VINO O COMO LECHE AGRIA — EL RECORD NO SE MIENTE.";
+    callOutLabel = "¡LE CANTO UN TIRO A:";
+    callItLabel = "🔒 HAGO LA PREDICCIÓN:";
+    engineTag = "COPA MUNDIAL 2026 • EL JALE DE LA RIVALIDAD";
+  } else if (locale === 'id') {
+    labelProphet = "KING RAMAL";
+    labelConfidence = "TINGKAT PD";
+    labelSealed = "TERSEGEL";
+    labelBragId = "ID BRAG";
+    footerLine1 = "BIAR RESMI, NO DEBAT — BUKTI LU YANG PERTAMA NYEBUT";
+    footerLine2 = "JANGAN COBA-COBA NGEDIT SEJARAH";
+    footerLine3 = "JADI ANGGUR ATAU AMPAS SUSU — REKOR TETEP ABADI.";
+    callOutLabel = "NGASIH PAHAM KE:";
+    callItLabel = "🔒 KUNCI PREDIKSI GUA:";
+    engineTag = "PIALA DUNIA 2026 • MESIN ADU EGO & BACIT";
+  } else if (locale === 'en-KE') {
+    labelProphet = "MAN NYUMA";
+    labelConfidence = "KUDUWAT";
+    labelSealed = "IMECHONGWA";
+    labelBragId = "BRAG ID";
+    footerLine1 = "FANYA BRAG YAKO OFFICIAL — PROOF ULIONGEA KWANZA";
+    footerLine2 = "USIJARIBU KUBADILISHA HISTORIA";
+    footerLine3 = "KA WINE AMA KA MAWA — MARECORDI ZINASIMAMA.";
+    callOutLabel = "NA-CALL OUT HUYU MSEE:";
+    callItLabel = "🔒 NILIKUSHOW KWA HUKU:";
+    engineTag = "WORLD CUP 2026 • DISKI BRAGGING RIGHTS MACHINE";
+  } else if (locale === 'en-ZA') {
+    labelProphet = "OU CITIZEN";
+    labelConfidence = "SURENESS";
+    labelSealed = "JOLLED";
+    labelBragId = "BRAG SLIP ID";
+    footerLine1 = "MAKE YOUR BRAG OFFICIAL — PROOF YOU JOLLED FIRST";
+    footerLine2 = "DON'T TRY SCRUB THE HISTORY, BRU";
+    footerLine3 = "LEKKER WINE OR MILK CHOKE — THE SLIP STANDS.";
+    callOutLabel = "DISKI CHALLENGE TO:";
+    callItLabel = "🔒 LOCKING THIS IN, BRU:";
+    engineTag = "WORLD CUP 2026 • THE DISKI JOL";
+  } else if (locale === 'ar') {
+    labelProphet = "العراف الكروي";
+    labelConfidence = "نسبة الهياط";
+    labelSealed = "مختوم رسميًا";
+    labelBragId = "معرف التفاخر";
+    footerLine1 = "وثق هياطك الكروي رسميًا — إثبات أنك قلته أولاً";
+    footerLine2 = "لا تحاول التعديل في التاريخ الكروي";
+    footerLine3 = "حليب فاسد أو عتيق مثل النبيذ — السجل الكروي لا يرحم.";
+    callOutLabel = "أبي أصيحك يا:";
+    callItLabel = "🔒 تحدي مباشر لـ:";
+    engineTag = "كأس العالم 2026 • محرك الهياط الرسمي";
   }
 
-  // Safe check bold predictions
+  // Status stamp text
+  let stampLine1 = 'PENDING ⏳';
+  let stampLine2 = 'BRAG IN PROGRESS';
+  let stampIcon = '🔒';
+  if (isCorrect) {
+    stampLine1 = 'CASHED 🍷';
+    stampLine2 = 'BRAG CONFIRMED';
+    stampIcon = '✅';
+  } else if (isWrong) {
+    stampLine1 = 'AGED LIKE MILK 🥛';
+    stampLine2 = 'HALL OF SHAME';
+    stampIcon = '❌';
+  }
+
+  if (locale === 'es-MX') {
+    if (isCorrect) {
+      stampLine1 = '¡COBRADÍSIMO! 🍷';
+      stampLine2 = 'BRAG COMPROBADO';
+    } else if (isWrong) {
+      stampLine1 = 'AGRIO COMO LIMÓN 🥛';
+      stampLine2 = 'SALÓN DE LA INFAMIA';
+    } else {
+      stampLine1 = 'PENDIENTE ⏳';
+      stampLine2 = 'BRAG EN EL AIRE';
+    }
+  } else if (locale === 'id') {
+    if (isCorrect) {
+      stampLine1 = 'CAIR SAMPAI KERING! 🍷';
+      stampLine2 = 'BRAG SAH / NO COUNTER';
+    } else if (isWrong) {
+      stampLine1 = 'BUSUK JADI AMPAS 🥛';
+      stampLine2 = 'GOA MALU / SHAME WALL';
+    } else {
+      stampLine1 = 'PROSES NINGGEL ⏳';
+      stampLine2 = 'BRAG OTW BOS';
+    }
+  } else if (locale === 'en-KE') {
+    if (isCorrect) {
+      stampLine1 = 'IMEJAA CHROME! 🍷';
+      stampLine2 = 'BRAG IMEKUBALI';
+    } else if (isWrong) {
+      stampLine1 = 'IMEOZA KA MAWA! 🥛';
+      stampLine2 = 'SHAME CORNER';
+    } else {
+      stampLine1 = 'BADO INAPIGA ⏳';
+      stampLine2 = 'BRAG INAENDELEA';
+    }
+  } else if (locale === 'en-ZA') {
+    if (isCorrect) {
+      stampLine1 = 'LEKKER DOP! 🍷';
+      stampLine2 = 'VERIFIED BRAG';
+    } else if (isWrong) {
+      stampLine1 = 'MILK CHOKE 🥛';
+      stampLine2 = 'WALL OF CHOKE';
+    } else {
+      stampLine1 = 'WAITING BRU ⏳';
+      stampLine2 = 'JOL IS ON';
+    }
+  } else if (locale === 'ar') {
+    if (isCorrect) {
+      stampLine1 = 'صح الصح! 🍷';
+      stampLine2 = 'تم تأكيد الجلد';
+    } else if (isWrong) {
+      stampLine1 = 'حليب فاسد 🥛';
+      stampLine2 = 'جدار الصياح';
+    } else {
+      stampLine1 = 'انتظار ⏳';
+      stampLine2 = 'التفاخر مستمر';
+    }
+  }
+
+  const barcodeLines = renderSvgBarcode(230, 820, 55, id);
+
+  // Build the bold predictions bullet list (up to 3)
   const boldList = Array.isArray(pred.boldPredictions) ? pred.boldPredictions : [];
-  let boldLines = "";
-  boldList.slice(0, 2).forEach((bp, idx) => {
-    const truncatedBp = bp.length > 36 ? bp.substring(0, 34) + "..." : bp;
-    boldLines += `<text x="80" y="${460 + idx * 25}" class="mono" font-size="12">• ${truncatedBp.toUpperCase()}</text>`;
+  let boldLinesHtml = '';
+  const isRtl = locale === 'ar';
+  const textX = isRtl ? 1000 : 80;
+  const anchor = isRtl ? 'end' : 'start';
+
+  boldList.slice(0, 3).forEach((bp: string, idx: number) => {
+    const truncated = bp.length > 40 ? bp.substring(0, 38) + '...' : bp;
+    boldLinesHtml += `<text x="${textX}" y="${680 + idx * 44}" font-family="'Courier New', monospace" font-size="22" font-weight="700" fill="${accentLight}" opacity="0.85" text-anchor="${anchor}">${isRtl ? '' : '▸ '}${truncated.toUpperCase()}${isRtl ? ' ◂' : ''}</text>`;
   });
 
-  const barcodeLines = renderSvgBarcode(190, 620, 45, id);
-
   return `
-    <svg width="600" height="800" viewBox="0 0 600 800" xmlns="http://www.w3.org/2000/svg">
+    <svg width="1080" height="1920" viewBox="0 0 1080 1920" xmlns="http://www.w3.org/2000/svg">
       <defs>
-        <style type="text/css">
-          @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@700;900&amp;family=JetBrains+Mono:wght@500;800&amp;display=swap');
-          .title { font-family: 'Space Grotesk', sans-serif; font-weight: 900; fill: #1c1917; }
-          .mono { font-family: 'JetBrains Mono', monospace; font-weight: 500; fill: #2c2927; }
-          .mono-bold { font-family: 'JetBrains Mono', monospace; font-weight: 800; fill: #1c1917; }
-          .mono-muted { font-family: 'JetBrains Mono', monospace; font-weight: 500; fill: #78716c; }
-        </style>
+        <linearGradient id="bgGrad" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="${bgColor}" />
+          <stop offset="100%" stop-color="#0a0a0a" />
+        </linearGradient>
+        <linearGradient id="accentGrad" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stop-color="${accentColor}" />
+          <stop offset="100%" stop-color="${accentLight}" />
+        </linearGradient>
       </defs>
-      
-      <!-- Dark container border/background -->
-      <rect width="600" height="800" fill="#0c0a09" />
-      
-      <!-- Inner decorative strobe lights for social design -->
-      <rect x="15" y="15" width="570" height="770" fill="none" stroke="${isWrong ? '#EF4444' : isCorrect ? '#10B981' : '#F59E0B'}" stroke-width="4" rx="10" />
 
-      <!-- Thermal Paper Background -->
-      <g transform="translate(40, 40)">
-        <!-- Paper Shadow -->
-        <rect x="4" y="4" width="512" height="712" rx="4" fill="#000000" opacity="0.5" />
-        <!-- Paper Body -->
-        <rect width="512" height="712" rx="4" fill="${paperBg}" />
+      <!-- Background -->
+      <rect width="1080" height="1920" fill="url(#bgGrad)" />
 
-        <!-- Thermal scalloped edges top and bottom -->
-        <path d="M 0,0 L 512,0" stroke="${borderStroke}" stroke-width="4" stroke-dasharray="10,10" />
-        <path d="M 0,712 L 512,712" stroke="${borderStroke}" stroke-width="4" stroke-dasharray="10,10" />
+      <!-- Top accent bar -->
+      <rect x="0" y="0" width="1080" height="14" fill="url(#accentGrad)" />
+      <!-- Bottom accent bar -->
+      <rect x="0" y="1906" width="1080" height="14" fill="url(#accentGrad)" />
 
-        <!-- Header -->
-        <text x="256" y="55" class="title" font-size="24" text-anchor="middle" letter-spacing="1">THE RECEIPT OF TRUTH</text>
-        <text x="256" y="80" class="mono-bold" font-size="10" text-anchor="middle" opacity="0.8">*** IMMUTABLE FOOTBALL RECORD ***</text>
+      <!-- Side accent bars -->
+      <rect x="0" y="0" width="10" height="1920" fill="url(#accentGrad)" opacity="0.6" />
+      <rect x="1070" y="0" width="10" height="1920" fill="url(#accentGrad)" opacity="0.6" />
 
-        <!-- Divider line -->
-        <line x1="40" y1="105" x2="472" y2="105" stroke="${borderStroke}" stroke-width="2" stroke-dasharray="4,4" />
+      <!-- Inner border frame -->
+      <rect x="30" y="30" width="1020" height="1860" fill="none" stroke="${accentColor}" stroke-width="3" stroke-dasharray="12,8" rx="4" opacity="0.4" />
 
-        <!-- Info details -->
-        <text x="40" y="135" class="mono" font-size="12">TX STAMP:</text>
-        <text x="140" y="135" class="mono-bold" font-size="12">ID-${id}</text>
+      <!-- TOP SECTION: Label -->
+      <text x="540" y="100" font-family="'Arial Black', sans-serif" font-weight="900" font-size="22" fill="${accentColor}" text-anchor="middle" letter-spacing="6" opacity="0.9">${engineTag}</text>
 
-        <text x="40" y="160" class="mono" font-size="12">TIME:</text>
-        <text x="140" y="160" class="mono" font-size="12">${timestamp}</text>
+      <!-- BRAGMODE branding -->
+      <text x="540" y="148" font-family="'Courier New', monospace" font-weight="700" font-size="18" fill="#555555" text-anchor="middle" letter-spacing="3">bragmode.com</text>
 
-        <text x="40" y="185" class="mono" font-size="12">NAME:</text>
-        <text x="140" y="185" class="mono-bold" font-size="12" fill="#d97706">${name}</text>
+      <!-- Divider -->
+      <line x1="60" y1="170" x2="1020" y2="170" stroke="${accentColor}" stroke-width="2" opacity="0.3" />
 
-        <text x="40" y="210" class="mono" font-size="12">CONFIDENCE:</text>
-        <text x="140" y="210" class="mono-bold" font-size="12">${confidence}%</text>
+      <!-- CALLOUT line (optional @friend) -->
+      ${calledOutLine ? `
+      <text x="540" y="230" font-family="'Arial Black', sans-serif" font-weight="900" font-size="36" fill="#888888" text-anchor="middle" letter-spacing="2">${callOutLabel}</text>
+      <text x="540" y="295" font-family="'Arial Black', sans-serif" font-weight="900" font-size="58" fill="${accentColor}" text-anchor="middle" letter-spacing="1">${calledOutLine}</text>
+      ` : `
+      <text x="540" y="250" font-family="'Arial Black', sans-serif" font-weight="900" font-size="36" fill="#888888" text-anchor="middle" letter-spacing="4">${callItLabel}</text>
+      `}
 
-        <!-- Divider line -->
-        <line x1="40" y1="235" x2="472" y2="235" stroke="${borderStroke}" stroke-width="2" />
+      <!-- HERO PREDICTION TEXT -->
+      <text x="540" y="${calledOutLine ? 390 : 360}" font-family="'Arial Black', sans-serif" font-weight="900" font-size="28" fill="#888888" text-anchor="middle" letter-spacing="3">${headline}</text>
 
-        <!-- QTY DESC HEADERS -->
-        <text x="40" y="255" class="mono-bold" font-size="11">QTY DESCRIPTION</text>
-        <text x="472" y="255" class="mono-bold" font-size="11" text-anchor="end">VAL</text>
-        <line x1="40" y1="265" x2="472" y2="265" stroke="${borderStroke}" stroke-width="1" stroke-dasharray="2,2" />
+      <!-- Main brag in huge type -->
+      <text x="${isRtl ? 1000 : 80}" y="${calledOutLine ? 495 : 465}" font-family="'Arial Black', sans-serif" font-weight="900" font-size="72" fill="#FFFFFF" letter-spacing="-1" text-anchor="${anchor}" dominant-baseline="auto">${summaryShort.substring(0, 22)}</text>
+      ${summaryShort.length > 22 ? `<text x="${isRtl ? 1000 : 80}" y="${calledOutLine ? 575 : 545}" font-family="'Arial Black', sans-serif" font-weight="900" font-size="72" fill="#FFFFFF" letter-spacing="-1" text-anchor="${anchor}">${summaryShort.substring(22, 44)}</text>` : ''}
+      ${summaryShort.length > 44 ? `<text x="${isRtl ? 1000 : 80}" y="${calledOutLine ? 655 : 625}" font-family="'Arial Black', sans-serif" font-weight="900" font-size="72" fill="#FFFFFF" letter-spacing="-1" text-anchor="${anchor}">${summaryShort.substring(44)}</text>` : ''}
 
-        <!-- Prediction block -->
-        <text x="40" y="295" class="mono-bold" font-size="12">1 x PROPHECY MATCHUP</text>
-        <text x="472" y="295" class="mono-bold" font-size="12" text-anchor="end">${isWrong ? 'FAIL' : 'OK'}</text>
-        <text x="60" y="320" class="mono-bold" font-size="14" fill="#000000">${getMatchHeadline(pred).toUpperCase()}</text>
-        <text x="60" y="342" class="mono-muted" font-size="12">${summary.toUpperCase()}</text>
+      <!-- Divider -->
+      <line x1="60" y1="640" x2="1020" y2="640" stroke="${accentColor}" stroke-width="2" opacity="0.25" />
 
-        <!-- Bold specs -->
-        <text x="40" y="380" class="mono-bold" font-size="12">1 x OUTCOME PARLAYS ACTIVE</text>
-        <text x="472" y="380" class="mono-bold" font-size="12" text-anchor="end">OK</text>
-        <line x1="60" y1="395" x2="452" y2="395" stroke="${borderStroke}" stroke-width="0.5" stroke-dasharray="2,2" />
-        
-        <!-- Render bold bullet points -->
-        ${boldLines || '<text x="80" y="420" class="mono-muted" font-size="12">• NO PARLAY ADDONS ATTACHED</text>'}
+      <!-- Bold predictions list -->
+      ${boldLinesHtml || `<text x="${textX}" y="700" font-family="'Courier New', monospace" font-size="22" font-weight="700" fill="#555555" text-anchor="${anchor}">▸ NO PARLAY ADDONS</text>`}
 
-        <!-- Stamp injection -->
-        ${stampHtml}
+      <!-- Divider -->
+      <line x1="60" y1="810" x2="1020" y2="810" stroke="${accentColor}" stroke-width="2" opacity="0.25" />
 
-        <line x1="40" y1="520" x2="472" y2="520" stroke="${borderStroke}" stroke-width="2" />
-        
-        <!-- Main liability block -->
-        <text x="40" y="550" class="mono-bold" font-size="13">TOTAL LIABILITY:</text>
-        <text x="472" y="550" class="mono-bold" font-size="14" text-anchor="end">${pred.isGolden ? 'GOLD PREMIUM' : 'VERIFIED PROOF'}</text>
-        <text x="40" y="575" class="mono-muted" font-size="10">IMMUTABLE LOGGED UNDER CRYPTOGRAPHIC LOGIC UNIT 2026</text>
+      <!-- METADATA GRID -->
+      <text x="${isRtl ? 1000 : 80}" y="880" font-family="'Courier New', monospace" font-weight="700" font-size="22" fill="#666666" letter-spacing="1" text-anchor="${anchor}">${labelProphet}</text>
+      <text x="${isRtl ? 1000 : 80}" y="918" font-family="'Arial Black', sans-serif" font-weight="900" font-size="34" fill="${accentLight}" text-anchor="${anchor}">${name}</text>
 
-        <!-- Barcode background block -->
-        <rect x="150" y="610" width="212" height="65" fill="#ffffff" opacity="0" />
-        
-        <!-- Barcode line render -->
-        ${barcodeLines}
-        
-        <text x="256" y="688" class="mono-bold" font-size="10" text-anchor="middle">*ID-${id}*</text>
-        <text x="256" y="702" class="mono-muted" font-size="8" text-anchor="middle">DO NOT ATTEMPT TO RECONSTRUCT HISTORY</text>
-      </g>
+      <text x="540" y="880" font-family="'Courier New', monospace" font-weight="700" font-size="22" fill="#666666" letter-spacing="1" text-anchor="middle">${labelConfidence}</text>
+      <text x="540" y="918" font-family="'Arial Black', sans-serif" font-weight="900" font-size="34" fill="${accentLight}" text-anchor="middle">${confidence}% LOCKED</text>
+
+      <text x="${isRtl ? 1000 : 80}" y="980" font-family="'Courier New', monospace" font-weight="700" font-size="22" fill="#666666" letter-spacing="1" text-anchor="${anchor}">${labelSealed}</text>
+      <text x="${isRtl ? 1000 : 80}" y="1018" font-family="'Courier New', monospace" font-weight="700" font-size="26" fill="#AAAAAA" text-anchor="${anchor}">${timestamp}</text>
+
+      <text x="540" y="980" font-family="'Courier New', monospace" font-weight="700" font-size="22" fill="#666666" letter-spacing="1" text-anchor="middle">${labelBragId}</text>
+      <text x="540" y="1018" font-family="'Courier New', monospace" font-weight="700" font-size="26" fill="#AAAAAA" text-anchor="middle">BRG-${id.substring(0, 12)}</text>
+
+      <!-- Divider -->
+      <line x1="60" y1="1060" x2="1020" y2="1060" stroke="${accentColor}" stroke-width="2" opacity="0.25" />
+
+      <!-- STATUS STAMP SECTION -->
+      <rect x="60" y="1090" width="960" height="200" rx="16" fill="${accentColor}" opacity="0.1" stroke="${accentColor}" stroke-width="3" />
+      <text x="540" y="1170" font-family="'Arial Black', sans-serif" font-weight="900" font-size="70" fill="${accentColor}" text-anchor="middle" letter-spacing="2">${stampLine1}</text>
+      <text x="540" y="1225" font-family="'Courier New', monospace" font-weight="700" font-size="26" fill="${accentLight}" text-anchor="middle" letter-spacing="4" opacity="0.8">${stampLine2}</text>
+
+      <!-- Divider -->
+      <line x1="60" y1="1320" x2="1020" y2="1320" stroke="${accentColor}" stroke-width="2" opacity="0.2" />
+
+      <!-- BARCODE SECTION -->
+      <rect x="220" y="1340" width="640" height="80" fill="#ffffff" opacity="0.04" />
+      ${barcodeLines}
+      <text x="540" y="1445" font-family="'Courier New', monospace" font-weight="700" font-size="20" fill="#555555" text-anchor="middle" letter-spacing="2">*BRG-${id}*</text>
+
+      <!-- Footer -->
+      <line x1="60" y1="1480" x2="1020" y2="1480" stroke="${accentColor}" stroke-width="1" opacity="0.2" />
+      <text x="540" y="1540" font-family="'Courier New', monospace" font-weight="700" font-size="22" fill="#444444" text-anchor="middle" letter-spacing="2">${footerLine1}</text>
+      <text x="540" y="1578" font-family="'Courier New', monospace" font-weight="700" font-size="22" fill="#444444" text-anchor="middle">${footerLine2}</text>
+      <text x="540" y="1616" font-family="'Courier New', monospace" font-weight="700" font-size="22" fill="#444444" text-anchor="middle">${footerLine3}</text>
+
+      <!-- Big BRAGMODE logo at bottom -->
+      <text x="540" y="1700" font-family="'Arial Black', sans-serif" font-weight="900" font-size="64" fill="${accentColor}" text-anchor="middle" letter-spacing="-2" opacity="0.9">BRAGMODE</text>
+      <text x="540" y="1745" font-family="'Courier New', monospace" font-weight="700" font-size="22" fill="#555555" text-anchor="middle" letter-spacing="4">bragmode.com</text>
     </svg>
   `;
 }
 
 // REST route to serve dynamic prediction receipt image
 app.get(["/api/receipt-image", "/api/receipt-image/receipt.png"], async (req, res) => {
+  // Allow social media crawlers (Twitter, FB, etc.) to fetch this image cross-origin
+  res.setHeader("Access-Control-Allow-Origin", "*");
+
   const r = req.query.r;
   if (!r) {
     return res.status(400).send("Missing prediction details");
@@ -801,75 +1051,130 @@ app.get(["/api/receipt-image", "/api/receipt-image/receipt.png"], async (req, re
   if (!pred) {
     return res.status(404).send("Invalid prediction payload");
   }
+
+  // Query database to check if this prediction ID is burned
+  if (pred.id) {
+    try {
+      const { data: dbPred } = await supabase.from("predictions").select("burned").eq("id", pred.id).maybeSingle();
+      if (dbPred?.burned) {
+        pred.burned = true;
+      }
+    } catch (err) {
+      console.error("Failed to query burned status for dynamic image:", err);
+    }
+  }
   
-  const svg = generateReceiptSvg(pred);
+  const locale = String(req.query.locale || pred.locale || 'en').trim();
+  const svg = generateReceiptSvg(pred, locale);
   const format = req.query.format || 'png';
   
   if (format === 'svg') {
     res.setHeader("Content-Type", "image/svg+xml");
-    res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    res.setHeader("Cache-Control", "public, max-age=300");
     return res.send(svg);
   }
   
   try {
-    const svgBuffer = Buffer.from(svg);
-    const pngBuffer = await sharp(svgBuffer)
-      .png()
+    const svgBuffer = Buffer.from(svg, 'utf-8');
+    const pngBuffer = await sharp(svgBuffer, { density: 150 })
+      .png({ compressionLevel: 6 })
       .toBuffer();
     
     res.setHeader("Content-Type", "image/png");
-    res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    // Short cache so status changes (correct/incorrect) are reflected quickly
+    res.setHeader("Cache-Control", "public, max-age=300");
     return res.send(pngBuffer);
   } catch (err) {
     console.error("Failed to convert SVG to PNG using sharp, falling back to SVG", err);
     res.setHeader("Content-Type", "image/svg+xml");
-    res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    res.setHeader("Cache-Control", "public, max-age=300");
     return res.send(svg);
   }
 });
 
+// Resolve the canonical public base URL for absolute OG/Twitter image links.
+// Priority: APP_URL env var (set by deployment platform) → X-Forwarded headers → req.host fallback.
+function getPublicBaseUrl(req: express.Request): string {
+  // APP_URL in .env is the authoritative deployed URL (e.g. https://myapp.com)
+  if (process.env.APP_URL && !process.env.APP_URL.includes('MY_APP_URL')) {
+    return process.env.APP_URL.replace(/\/$/, '');
+  }
+  // Behind a reverse proxy (Nginx, Cloudflare, etc.) use forwarded headers
+  const proto = req.get('x-forwarded-proto') || (req.secure ? 'https' : 'http');
+  const host = req.get('x-forwarded-host') || req.get('host') || 'localhost:3000';
+  return `${proto}://${host}`;
+}
+
 // Capture ROOT request before Vite to output custom metadata crawl cards!
-app.get("/", async (req, res, next) => {
+app.get(["/", "/es-MX", "/id", "/ar", "/en-KE", "/en-ZA"], async (req, res, next) => {
   const r = req.query.r;
-  if (!r) {
-    return next();
+  let metaTags = "";
+  let isBurned = false;
+
+  if (r) {
+    const pred = decodePredictionSafe(String(r));
+    if (pred) {
+      // Check database to see if prediction ID is burned
+      isBurned = pred.burned || false;
+      if (pred.id && !isBurned) {
+        try {
+          const { data: dbPred } = await supabase.from("predictions").select("burned").eq("id", pred.id).maybeSingle();
+          if (dbPred?.burned) {
+            isBurned = true;
+          }
+        } catch (err) {
+          console.error("Failed to query burned status for root html:", err);
+        }
+      }
+
+      try {
+        const base = getPublicBaseUrl(req);
+        const nameUpper = (pred.name || "Anonymous").toUpperCase().replace(/"/g, '&quot;');
+        const absoluteImageUrl = `${base}/api/receipt-image/receipt.png?r=${encodeURIComponent(String(r))}`;
+        const absolutePageUrl = `${base}/?r=${encodeURIComponent(String(r))}`;
+
+        metaTags = isBurned ? `
+        <!-- Open Graph / Facebook -->
+        <meta property="og:type" content="website" />
+        <meta property="og:url" content="${absolutePageUrl}" />
+        <meta property="og:title" content="🔥 [EVIDENCE REDACTED] 👀" />
+        <meta property="og:description" content="This prediction was incinerated to protect ${nameUpper}'s reputation. Nothing to see here! 😈" />
+        <meta property="og:image" content="${absoluteImageUrl}" />
+        <meta property="og:image:type" content="image/png" />
+        <meta property="og:image:width" content="1080" />
+        <meta property="og:image:height" content="1920" />
+
+        <!-- Twitter / X -->
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:url" content="${absolutePageUrl}" />
+        <meta name="twitter:title" content="🔥 [EVIDENCE REDACTED]" />
+        <meta name="twitter:description" content="This prediction was incinerated to protect ${nameUpper}'s reputation. Nothing to see here! 😈" />
+        <meta name="twitter:image" content="${absoluteImageUrl}" />
+        ` : `
+        <!-- Open Graph / Facebook -->
+        <meta property="og:type" content="website" />
+        <meta property="og:url" content="${absolutePageUrl}" />
+        <meta property="og:title" content="${nameUpper} called it before kickoff 👀 — did they age like wine or milk?" />
+        <meta property="og:description" content="They locked in this World Cup 2026 brag BEFORE the match. Tap to see if it aged like wine 🍷 or milk 🥛 — and lock in yours." />
+        <meta property="og:image" content="${absoluteImageUrl}" />
+        <meta property="og:image:type" content="image/png" />
+        <meta property="og:image:width" content="1080" />
+        <meta property="og:image:height" content="1920" />
+
+        <!-- Twitter / X -->
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:url" content="${absolutePageUrl}" />
+        <meta name="twitter:title" content="${nameUpper} said it before kickoff. Were they right? 🔒" />
+        <meta name="twitter:description" content="They locked in this World Cup 2026 brag BEFORE the match. Tap to see if it aged like wine 🍷 or milk 🥛 — and lock in yours." />
+        <meta name="twitter:image" content="${absoluteImageUrl}" />
+        `;
+      } catch (err) {
+        console.error("Failed to dynamically generate meta tags:", err);
+      }
+    }
   }
-  
-  const pred = decodePredictionSafe(String(r));
-  if (!pred) {
-    return next();
-  }
-  
+
   try {
-    const host = req.get('host') || 'localhost:3000';
-    const protocol = host.includes('localhost') ? 'http' : 'https';
-    
-    // Escape quote values safely for HTML structures
-    const nameUpper = (pred.name || "Anonymous").toUpperCase().replace(/"/g, '&quot;');
-    const summary = (getMatchHeadline(pred) + " Prediction").replace(/"/g, '&quot;');
-    
-    const absoluteImageUrl = `${protocol}://${host}/api/receipt-image/receipt.png?r=${encodeURIComponent(String(r))}`;
-    const absolutePageUrl = `${protocol}://${host}/?r=${encodeURIComponent(String(r))}`;
-    
-    const metaTags = `
-    <!-- Open Graph / Facebook -->
-    <meta property="og:type" content="website" />
-    <meta property="og:url" content="${absolutePageUrl}" />
-    <meta property="og:title" content="Receipt of Truth: ${nameUpper}'s Prediction" />
-    <meta property="og:description" content="Did this World Cup 2026 prediction age like wine 🍷 or spoil like milk 🥛? Tap to inspect the verified record card!" />
-    <meta property="og:image" content="${absoluteImageUrl}" />
-    <meta property="og:image:type" content="image/png" />
-    <meta property="og:image:width" content="600" />
-    <meta property="og:image:height" content="800" />
-
-    <!-- Twitter -->
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:url" content="${absolutePageUrl}" />
-    <meta name="twitter:title" content="Receipt of Truth: ${nameUpper}'s Locked-In Prophecy" />
-    <meta name="twitter:description" content="Did this World Cup 2026 prediction age like wine 🍷 or spoil like milk 🥛? Tap to inspect the verified record card!" />
-    <meta name="twitter:image" content="${absoluteImageUrl}" />
-    `;
-
     let html = "";
     if (process.env.NODE_ENV !== "production" && viteInstance) {
       const rawHtml = fs.readFileSync(path.join(process.cwd(), "index.html"), "utf-8");
@@ -879,13 +1184,35 @@ app.get("/", async (req, res, next) => {
       html = fs.readFileSync(path.join(distPath, "index.html"), "utf-8");
     }
 
-    // Insert metatags seamlessly into index.html
-    html = html.replace("<head>", `<head>${metaTags}`);
-    
+    if (metaTags) {
+      html = html.replace("<head>", `<head>${metaTags}`);
+    }
+
+    // Resolve detected locale and direction from middleware
+    const resolvedLocale = (req as any).detectedLocale || 'en';
+    const direction = resolvedLocale === 'ar' ? 'rtl' : 'ltr';
+
+    const i18nScript = `
+      <script>
+        window.__LOCALE__ = "${resolvedLocale}";
+        window.__DIRECTION__ = "${direction}";
+      </script>
+    `;
+    html = html.replace("<head>", `<head>${i18nScript}`);
+
+    // Dynamically inject attributes into html tag
+    if (direction === 'rtl') {
+      html = html.replace('<html lang="en">', '<html lang="ar" dir="rtl">');
+      html = html.replace('<html>', '<html lang="ar" dir="rtl">');
+    } else {
+      html = html.replace('<html lang="en">', `<html lang="${resolvedLocale}" dir="ltr">`);
+      html = html.replace('<html>', `<html lang="${resolvedLocale}" dir="ltr">`);
+    }
+
     res.setHeader("Content-Type", "text/html");
     return res.send(html);
   } catch (err) {
-    console.error("Failed to dynamically inject meta tags:", err);
+    console.error("Failed to dynamically compile index.html:", err);
     return next();
   }
 });

@@ -31,6 +31,13 @@ export interface Prediction {
   teamMarket?: string;
   teamValue?: string;
   customTakeText?: string;
+  
+  // Brag architecture fields
+  burned?: boolean;           // Coward's Way Out — hides from public wall
+  calledOut?: string;         // @friend name shown on Hype Card
+  notificationEmail?: string; // Optional email for Victory Lap notification
+  stakes?: string;            // "If I'm wrong, I will..." consequence
+  shareLanguage?: 'en' | 'es' | 'pt' | 'te'; // Regional WhatsApp language
 }
 
 export interface MatchPreset {

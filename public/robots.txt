@@ -1,0 +1,6 @@
+# User-Agent rules for BragMode
+User-agent: *
+Allow: /
+
+# Sitemap URL
+Sitemap: https://bragmode.com/sitemap.xml
