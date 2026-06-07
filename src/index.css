@@ -152,3 +152,35 @@
   to   { opacity: 1; transform: translateY(0); }
 }
 
+/* =============================================
+   INFECT THE GROUP CHAT FLASHING ANIMATION
+   ============================================= */
+@keyframes infect-flash {
+  0%, 100% {
+    background-color: #ef4444; /* red-500 */
+    color: #ffffff;
+    box-shadow: 0 0 16px rgba(239, 68, 68, 0.8), 6px 6px 0px 0px rgba(0, 0, 0, 1);
+    transform: scale(1);
+  }
+  50% {
+    background-color: #f59e0b; /* amber-500 */
+    color: #000000;
+    box-shadow: 0 0 28px rgba(245, 158, 11, 1), 6px 6px 0px 0px rgba(0, 0, 0, 1);
+    transform: scale(1.02);
+  }
+}
+
+.animate-infect-flash {
+  animation: infect-flash 0.8s ease-in-out infinite;
+}
+
+@keyframes live-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(0.95); }
+}
+
+.animate-live-pulse {
+  animation: live-pulse 1.2s infinite ease-in-out;
+}
+
+

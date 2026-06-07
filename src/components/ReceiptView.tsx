@@ -88,6 +88,110 @@ export default function ReceiptView({
   const [selectedFailureLabel, setSelectedFailureLabel] = useState<string>('Aged Like Milk');
   const [customActualResult, setCustomActualResult] = useState<string>('');
   const [roastIndex, setRoastIndex] = useState<number>(0);
+  const [copiedText, setCopiedText] = useState<string | null>(null);
+
+  const roomUrl = `${window.location.origin}/room/${prediction.id}?r=${encodePrediction(prediction)}`;
+
+  const getProvocativePayload = (platform: 'whatsapp' | 'telegram' | 'discord') => {
+    const name = prediction.name ? prediction.name.trim() : 'Anonymous';
+    const opponent = prediction.calledOut ? prediction.calledOut.trim() : '@EVERYONE';
+    const consequence = prediction.stakes ? prediction.stakes.trim() : 'admit I know nothing about football';
+    
+    // Format prediction summary
+    let teamA = "Team A";
+    let teamB = "Team B";
+    let scoreText = `${prediction.predictedScoreA}-${prediction.predictedScoreB}`;
+
+    const typeStr = prediction.predictionType || 'match';
+    if (typeStr === 'player') {
+      teamA = prediction.playerName || 'Player';
+      teamB = 'targets';
+      scoreText = `${prediction.playerValue} ${prediction.playerMarket}`;
+    } else if (typeStr === 'team') {
+      teamA = prediction.teamName || 'Team';
+      teamB = 'achievement';
+      scoreText = prediction.teamMarket || 'wins';
+    } else if (typeStr === 'custom') {
+      teamA = 'spell';
+      teamB = 'prophecy';
+      scoreText = prediction.customTakeText || 'take';
+    } else {
+      if (prediction.matchId === 'custom' && prediction.customMatch) {
+        const stripped = prediction.customMatch.replace(/⚽/g, '').trim();
+        const parts = stripped.split(/\s+vs\s+/gi);
+        if (parts.length === 2) {
+          teamA = parts[0].trim();
+          teamB = parts[1].trim();
+        }
+      } else {
+        const preset = WORLD_CUP_MATCHES.find(m => m.id === prediction.matchId);
+        if (preset) {
+          teamA = preset.teamA;
+          teamB = preset.teamB;
+        }
+      }
+    }
+
+    const lang = prediction.shareLanguage || locale;
+    
+    let header = `🚨 ${name.toUpperCase()} JUST WENT INTO BRAG MODE AGAINST @${opponent.replace(/^@/, '')}! 🚨`;
+    let predictionBody = `Prediction: ${teamA} destroys ${teamB} by ${scoreText}. Consequence: Or I ${consequence}.`;
+    let actionCall = `Lock in your counter-brag or call them a coward here: ${roomUrl}`;
+
+    if (lang === 'es-MX' || lang === 'es') {
+      header = `🚨 ¡${name.toUpperCase()} ACABA DE ENTRAR EN MODO PRESUMIDO CONTRA @${opponent.replace(/^@/, '')}! 🚨`;
+      predictionBody = `Predicción: ${teamA} destruye a ${teamB} por ${scoreText}. Consecuencia: O yo ${consequence}.`;
+      actionCall = `Registra tu contra-brag o dile cobarde aquí: ${roomUrl}`;
+    } else if (lang === 'id') {
+      header = `🚨 ${name.toUpperCase()} BARU AJA MASUK MODE PAMER LAWAN @${opponent.replace(/^@/, '')}! 🚨`;
+      predictionBody = `Prediksi: ${teamA} ngebantai ${teamB} dengan skor ${scoreText}. Konsekuensi: Atau gua bakal ${consequence}.`;
+      actionCall = `Kunci prediksi tandingan lu atau sebut mereka pengecut di sini: ${roomUrl}`;
+    } else if (lang === 'ar') {
+      header = `🚨 ${name.toUpperCase()} دخل وضع الهياط ضد @${opponent.replace(/^@/, '')}! 🚨`;
+      predictionBody = `التوقع: ${teamA} بيدمر ${teamB} بنتيجة ${scoreText}. العقوبة: أو أنا ${consequence}.`;
+      actionCall = `سجل توقعك المضاد أو اتحداهم من هنا: ${roomUrl}`;
+    } else if (lang === 'en-KE' || lang === 'ke') {
+      header = `🚨 ${name.toUpperCase()} AMEINGIA BRAG MODE CONTRA @${opponent.replace(/^@/, '')}! 🚨`;
+      predictionBody = `Prediction: ${teamA} inadestroy ${teamB} na ${scoreText}. Consequence: Ama nita ${consequence}.`;
+      actionCall = `Lock in counter-brag yako ama umwambie ni mwoga hapa: ${roomUrl}`;
+    } else if (lang === 'en-ZA' || lang === 'za') {
+      header = `🚨 ${name.toUpperCase()} JUST WENT INTO BRAG MODE AGAINST @${opponent.replace(/^@/, '')}, BRU! 🚨`;
+      predictionBody = `Prediction: ${teamA} destroys ${teamB} by ${scoreText}. Consequence: Or I ${consequence}.`;
+      actionCall = `Lock in your counter-brag or call them a coward here: ${roomUrl}`;
+    } else if (lang === 'pt') {
+      header = `🚨 ${name.toUpperCase()} ACABOU DE ENTRAR NO MODO DE VANGUARDA CONTRA @${opponent.replace(/^@/, '')}! 🚨`;
+      predictionBody = `Previsão: ${teamA} destrói ${teamB} por ${scoreText}. Consequência: Ou eu ${consequence}.`;
+      actionCall = `Faça sua contra-previsão ou chame-o de covarde aqui: ${roomUrl}`;
+    } else if (lang === 'te') {
+      header = `🚨 @${opponent.replace(/^@/, '')} పై ${name.toUpperCase()} సవాల్ విసిరారు! 🚨`;
+      predictionBody = `అంచనా: ${teamB} ని ${teamA} ${scoreText} తో ఓడిస్తుంది. లేకపోతే నేను ${consequence}.`;
+      actionCall = `మీ కౌంటర్-ఛాలెంజ్ లాక్ చేయండి లేదా ఇక్కడ వారిని పిరికివాడు అని పిలవండి: ${roomUrl}`;
+    }
+
+    return `${header}\n\n${predictionBody}\n\n${actionCall}`;
+  };
+
+  const handleNativeShare = (platform: 'whatsapp' | 'telegram' | 'discord') => {
+    const payloadText = getProvocativePayload(platform);
+    
+    if (platform === 'whatsapp') {
+      const url = `https://api.whatsapp.com/send?text=${encodeURIComponent(payloadText)}`;
+      window.open(url, '_blank');
+    } else if (platform === 'telegram') {
+      const url = `https://t.me/share/url?url=${encodeURIComponent(roomUrl)}&text=${encodeURIComponent(payloadText.replace(roomUrl, ''))}`;
+      window.open(url, '_blank');
+    } else if (platform === 'discord') {
+      navigator.clipboard.writeText(payloadText)
+        .then(() => {
+          setCopiedText("Provocative payload copied! Paste it in Discord 💥");
+          setTimeout(() => setCopiedText(null), 4000);
+          window.open('https://discord.com/channels/@me', '_blank');
+        })
+        .catch(err => {
+          console.error("Clipboard copy failed", err);
+        });
+    }
+  };
   
   const receiptRef = useRef<HTMLDivElement>(null);
 
@@ -1588,98 +1692,179 @@ Lock in yours before kickoff:`;
 
           {/* EXPORT AND DEEP LINKING ACTIONS */}
           <div className="bg-white border-4 border-black rounded-3xl p-6 text-black neo-shadow space-y-4">
-            <div>
-              <h3 className="font-sans font-black text-xl italic text-black tracking-tight flex items-center gap-2">
-                <Share2 className="text-yellow-500 h-6 w-6 stroke-[3]" />
-                SHARE BANTER & PROOF
-              </h3>
-              <p className="text-xs text-zinc-650 mt-1 font-bold">Copy or Tweet your comedy receipt text card along with the deep-link link to gain virality!</p>
-            </div>
-
-            {/* Dynamic Receipt Photo Preview */}
-            <div className="border bg-zinc-50 border-zinc-200 p-4 rounded-2xl flex flex-col items-center justify-center relative overflow-hidden group">
-              <div className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2.5 flex items-center gap-1.5 self-start">
-                <Sparkles size={11} className="text-yellow-500 animate-spin" style={{ animationDuration: '3s' }} />
-                <span>DYNAMIC RECEIPT PHOTO (PNG)</span>
-              </div>
-              <div className="relative w-full max-w-[280px] bg-stone-900 border-2 border-black rounded-xl p-2 flex items-center justify-center min-h-[360px] neo-shadow-sm transition-transform duration-300 hover:scale-[1.01]">
-                <img 
-                  src={imageUrl} 
-                  alt="Dynamic Receipt Proof" 
-                  referrerPolicy="no-referrer"
-                  className="w-full h-auto aspect-[3/4] object-contain rounded-lg border border-black shadow-lg"
-                  loading="lazy"
-                />
-              </div>
-              <span className="mt-2.5 bg-black text-stone-100 border border-zinc-700 px-2.5 py-1 text-[9px] font-bold rounded-lg uppercase tracking-wider shadow-xs opacity-90 text-center">
-                Right-Click or Hold Image to Save/Copy
-              </span>
-              <p className="text-[10px] text-zinc-500 font-bold mt-1.5 text-center leading-normal">
-                This image updates dynamically with the timeline simulator above. Show it on Twitter/Reddit to prove your sports prophecy!
-              </p>
-            </div>
-
-            {/* Link Copy display */}
-            <div className="space-y-1.5">
-              <label className="block text-[10px] font-black text-zinc-700 uppercase tracking-widest">Shareable Deep-Link & Text Card</label>
-              <div className="flex gap-2">
-                <div className="flex-1 bg-stone-50 border-2 border-black px-3 py-2.5 rounded-xl text-xs text-black truncate font-semibold font-mono select-all">
-                  {shareUrl}
+            {!prediction.isGolden ? (
+              // FREE BRAG: Frictionless, native provocative sharing
+              <div className="space-y-4">
+                <div>
+                  <h3 className="font-sans font-black text-xl italic text-black tracking-tight flex items-center gap-2">
+                    <Flame className="text-red-500 h-6 w-6 stroke-[3] animate-bounce" />
+                    VIRAL SHARING PROTOCOL
+                  </h3>
+                  <p className="text-xs text-zinc-650 mt-1 font-bold uppercase tracking-wide">
+                    DO NOT SHARE AN ORDINARY CARD. CHOOSE A METHOD BELOW TO INFECT THE CHAT INTERNALLY.
+                  </p>
                 </div>
-                <button
-                  onClick={handleCopyLink}
-                  className="bg-black hover:bg-zinc-900 text-yellow-400 px-4 flex items-center justify-center gap-1.5 rounded-xl border-2 border-black cursor-pointer neo-shadow-sm transition-all text-xs font-black uppercase whitespace-nowrap"
-                  title="Copy receipt card text and link"
-                >
-                  {copied ? (
-                    <>
-                      <Check className="text-green-500 stroke-[3]" size={14} />
-                      <span>Copied!</span>
-                    </>
-                  ) : (
-                    <>
-                      <Copy size={14} />
-                      <span>Copy Viral Card</span>
-                    </>
-                  )}
-                </button>
-              </div>
-              {copied && (
-                <p className="text-[10px] text-green-600 font-bold uppercase tracking-wider flex items-center gap-1 animate-pulse">
-                  <Check size={11} className="stroke-[3]" /> Complete formatted receipt card & link copied to clipboard!
-                </p>
-              )}
-            </div>
 
-            {/* PNG Save action / Tweet action */}
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                onClick={handleShareTwitter}
-                className="bg-[#1DA1F2] hover:bg-[#1a94e0] text-white border-2 border-black py-3 px-4 rounded-xl font-sans font-black text-xs uppercase flex items-center justify-center gap-2 cursor-pointer neo-shadow-sm active:scale-95 transition-all"
-              >
-                <Twitter size={14} /> Tweet Take
-              </button>
-              
-              <button
-                onClick={handleDownloadPNG}
-                disabled={downloading}
-                className="bg-yellow-400 hover:bg-yellow-300 text-black border-2 border-black disabled:bg-zinc-250 disabled:text-zinc-500 py-3 px-4 rounded-xl font-sans font-black text-xs uppercase flex items-center justify-center gap-1.5 cursor-pointer neo-shadow-sm active:scale-95 transition-all"
-              >
-                {downloading ? (
-                  <>
-                    <div className="w-3 h-3 rounded-full border-2 border-black border-t-transparent animate-spin" />
-                    <span>Drawing...</span>
-                  </>
-                ) : (
-                  <>
-                    <Download size={14} className="stroke-[3]" />
-                    <span>Save PNG</span>
-                  </>
+                {/* Highly prominent, flashing button: "INFECT THE GROUP CHAT" */}
+                <button
+                  type="button"
+                  onClick={() => handleNativeShare('whatsapp')}
+                  className="w-full text-center py-4 px-6 text-sm font-sans font-black uppercase rounded-2xl border-4 border-black neo-shadow animate-infect-flash transition-all cursor-pointer select-none"
+                  title="Infect the Group Chat via WhatsApp"
+                >
+                  💥 INFECT THE GROUP CHAT
+                </button>
+
+                {/* Sleek platform buttons */}
+                <div className="grid grid-cols-3 gap-2.5 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => handleNativeShare('whatsapp')}
+                    className="flex flex-col items-center justify-center gap-1 py-3 px-1 border-2 border-black bg-[#25D366] hover:bg-[#20ba59] text-white font-sans font-black text-[10px] uppercase tracking-wide cursor-pointer transition-all neo-shadow-sm select-none"
+                    title="Launch WhatsApp with provocative payload"
+                  >
+                    <span>💬 WhatsApp</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleNativeShare('telegram')}
+                    className="flex flex-col items-center justify-center gap-1 py-3 px-1 border-2 border-black bg-[#0088cc] hover:bg-[#007cbd] text-white font-sans font-black text-[10px] uppercase tracking-wide cursor-pointer transition-all neo-shadow-sm select-none"
+                    title="Launch Telegram with provocative payload"
+                  >
+                    <span>✈️ Telegram</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleNativeShare('discord')}
+                    className="flex flex-col items-center justify-center gap-1 py-3 px-1 border-2 border-black bg-[#5865F2] hover:bg-[#4752c4] text-white font-sans font-black text-[10px] uppercase tracking-wide cursor-pointer transition-all neo-shadow-sm select-none"
+                    title="Copy payload and open Discord client"
+                  >
+                    <span>🎮 Discord</span>
+                  </button>
+                </div>
+
+                {copiedText && (
+                  <div className="bg-yellow-400 border-2 border-black p-3 rounded-xl font-bold text-xs text-black text-center uppercase tracking-wide neo-shadow-sm animate-[fadeIn_0.2s_ease-out] flex items-center justify-center gap-1.5">
+                    <Check size={14} className="stroke-[3] text-black" />
+                    {copiedText}
+                  </div>
                 )}
-              </button>
-            </div>
+                
+                {/* Standard Copy Link fallback inside free brag just in case */}
+                <div className="pt-4 border-t border-dashed border-zinc-200 space-y-1.5">
+                  <span className="block text-[9px] font-black text-zinc-500 uppercase tracking-widest">Or copy raw room link</span>
+                  <div className="flex gap-2">
+                    <div className="flex-1 bg-stone-50 border border-zinc-300 px-3 py-1.5 rounded-lg text-[10px] text-zinc-600 truncate font-semibold font-mono select-all">
+                      {roomUrl}
+                    </div>
+                    <button
+                      onClick={handleCopyLink}
+                      className="bg-black hover:bg-zinc-900 text-yellow-400 px-3 py-1.5 rounded-lg border border-black cursor-pointer transition-all text-[10px] font-black uppercase whitespace-nowrap"
+                    >
+                      {copied ? "Copied!" : "Copy"}
+                    </button>
+                  </div>
+                </div>
+
+              </div>
+            ) : (
+              // GOLD/PREMIUM BRAG: Standard sharing features (Twitter/PNG preview/etc.)
+              <>
+                <div>
+                  <h3 className="font-sans font-black text-xl italic text-black tracking-tight flex items-center gap-2">
+                    <Share2 className="text-yellow-500 h-6 w-6 stroke-[3]" />
+                    SHARE BANTER & PROOF
+                  </h3>
+                  <p className="text-xs text-zinc-650 mt-1 font-bold">Copy or Tweet your comedy receipt text card along with the deep-link link to gain virality!</p>
+                </div>
+
+                {/* Dynamic Receipt Photo Preview */}
+                <div className="border bg-zinc-50 border-zinc-200 p-4 rounded-2xl flex flex-col items-center justify-center relative overflow-hidden group">
+                  <div className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2.5 flex items-center gap-1.5 self-start">
+                    <Sparkles size={11} className="text-yellow-500 animate-spin" style={{ animationDuration: '3s' }} />
+                    <span>DYNAMIC RECEIPT PHOTO (PNG)</span>
+                  </div>
+                  <div className="relative w-full max-w-[280px] bg-stone-900 border-2 border-black rounded-xl p-2 flex items-center justify-center min-h-[360px] neo-shadow-sm transition-transform duration-300 hover:scale-[1.01]">
+                    <img 
+                      src={imageUrl} 
+                      alt="Dynamic Receipt Proof" 
+                      referrerPolicy="no-referrer"
+                      className="w-full h-auto aspect-[3/4] object-contain rounded-lg border border-black shadow-lg"
+                      loading="lazy"
+                    />
+                  </div>
+                  <span className="mt-2.5 bg-black text-stone-100 border border-zinc-700 px-2.5 py-1 text-[9px] font-bold rounded-lg uppercase tracking-wider shadow-xs opacity-90 text-center">
+                    Right-Click or Hold Image to Save/Copy
+                  </span>
+                  <p className="text-[10px] text-zinc-500 font-bold mt-1.5 text-center leading-normal">
+                    This image updates dynamically with the timeline simulator above. Show it on Twitter/Reddit to prove your sports prophecy!
+                  </p>
+                </div>
+
+                {/* Link Copy display */}
+                <div className="space-y-1.5">
+                  <label className="block text-[10px] font-black text-zinc-750 uppercase tracking-widest">Shareable Deep-Link & Text Card</label>
+                  <div className="flex gap-2">
+                    <div className="flex-1 bg-stone-50 border-2 border-black px-3 py-2.5 rounded-xl text-xs text-black truncate font-semibold font-mono select-all">
+                      {shareUrl}
+                    </div>
+                    <button
+                      onClick={handleCopyLink}
+                      className="bg-black hover:bg-zinc-900 text-yellow-400 px-4 flex items-center justify-center gap-1.5 rounded-xl border-2 border-black cursor-pointer neo-shadow-sm transition-all text-xs font-black uppercase whitespace-nowrap"
+                      title="Copy receipt card text and link"
+                    >
+                      {copied ? (
+                        <>
+                          <Check className="text-green-500 stroke-[3]" size={14} />
+                          <span>Copied!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy size={14} />
+                          <span>Copy Viral Card</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  {copied && (
+                    <p className="text-[10px] text-green-600 font-bold uppercase tracking-wider flex items-center gap-1 animate-pulse">
+                      <Check size={11} className="stroke-[3]" /> Complete formatted receipt card & link copied to clipboard!
+                    </p>
+                  )}
+                </div>
+
+                {/* PNG Save action / Tweet action */}
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={handleShareTwitter}
+                    className="bg-[#1DA1F2] hover:bg-[#1a94e0] text-white border-2 border-black py-3 px-4 rounded-xl font-sans font-black text-xs uppercase flex items-center justify-center gap-2 cursor-pointer neo-shadow-sm active:scale-95 transition-all"
+                  >
+                    <Twitter size={14} /> Tweet Take
+                  </button>
+                  
+                  <button
+                    onClick={handleDownloadPNG}
+                    disabled={downloading}
+                    className="bg-yellow-400 hover:bg-yellow-300 text-black border-2 border-black disabled:bg-zinc-250 disabled:text-zinc-500 py-3 px-4 rounded-xl font-sans font-black text-xs uppercase flex items-center justify-center gap-1.5 cursor-pointer neo-shadow-sm active:scale-95 transition-all"
+                  >
+                    {downloading ? (
+                      <>
+                        <div className="w-3 h-3 rounded-full border-2 border-black border-t-transparent animate-spin" />
+                        <span>Drawing...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Download size={14} className="stroke-[3]" />
+                        <span>Save PNG</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
-          
         </div>
       </div>
     </div>

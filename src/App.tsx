@@ -7,6 +7,7 @@ import ReceiptView from './components/ReceiptView';
 import SimulationCheckout from './components/SimulationCheckout';
 import GlobalHub from './components/GlobalHub';
 import { submitPrediction } from './api';
+import MatchRoom from './components/MatchRoom';
 
 const TRANSLATIONS: Record<string, Record<string, string>> = {
   'en': {
@@ -154,6 +155,7 @@ export default function App() {
   const [viewingShared, setViewingShared] = useState(false);
   const [isGolden, setIsGolden] = useState(false);
   const [challengePreFill, setChallengePreFill] = useState<Prediction | null>(null);
+  const [isRoomView, setIsRoomView] = useState(false);
   
   // Checkout simulator state managers
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
@@ -258,6 +260,14 @@ export default function App() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const encodedPayload = params.get('r');
+    
+    // Check if path is a room path
+    const path = window.location.pathname.toLowerCase();
+    const isRoom = path.includes('/room/') || path.endsWith('/room');
+    if (isRoom) {
+      setIsRoomView(true);
+    }
+
     if (encodedPayload) {
       const decoded = decodePrediction(encodedPayload);
       if (decoded) {
@@ -368,8 +378,9 @@ export default function App() {
     setViewingShared(false);
     setIsGolden(false);
     setChallengePreFill(null);
+    setIsRoomView(false);
     // Reset URL to base path
-    const cleanUrl = `${window.location.origin}${window.location.pathname}`;
+    const cleanUrl = window.location.origin;
     window.history.pushState({ path: cleanUrl }, '', cleanUrl);
   };
 
@@ -378,8 +389,9 @@ export default function App() {
     setPrediction(null);
     setViewingShared(false);
     setIsGolden(false);
+    setIsRoomView(false);
     
-    const newUrl = `${window.location.origin}${window.location.pathname}?r=${encodePrediction(counterPrediction)}`;
+    const newUrl = `${window.location.origin}/?r=${encodePrediction(counterPrediction)}`;
     window.history.pushState({ path: newUrl }, '', newUrl);
   };
 
@@ -473,7 +485,15 @@ export default function App() {
 
         {/* Dynamic content modules */}
         <main className="flex-1 flex flex-col justify-center max-w-4xl w-full mx-auto">
-          {prediction ? (
+          {isRoomView && prediction ? (
+            /* Render active match room view */
+            <MatchRoom
+              prediction={prediction}
+              locale={locale}
+              onChallenge={handleChallenge}
+              onBack={handleBackToForm}
+            />
+          ) : prediction ? (
             /* Render active predictions receipt view */
             <div className="animate-[fadeIn_0.4s_ease-out]">
               <ReceiptView

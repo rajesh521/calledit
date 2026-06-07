@@ -17,7 +17,7 @@ interface GlobalHubProps {
 }
 
 export default function GlobalHub({ onSelectPrediction, currentPredictionId }: GlobalHubProps) {
-  const [activeTab, setActiveTab] = useState<'pending' | 'honor' | 'shame' | 'analytics' | 'referee'>('pending');
+  const [activeTab, setActiveTab] = useState<'pending' | 'honor' | 'shame' | 'analytics' | 'referee' | 'social'>('pending');
   const [predictions, setPredictions] = useState<Prediction[]>([]);
   const [analytics, setAnalytics] = useState<GlobalAnalytics | null>(null);
   const [outcomes, setOutcomes] = useState<MatchOutcome[]>([]);
@@ -31,6 +31,12 @@ export default function GlobalHub({ onSelectPrediction, currentPredictionId }: G
   const [refScoreA, setRefScoreA] = useState('2');
   const [refScoreB, setRefScoreB] = useState('1');
   const [refGoalscorer, setRefGoalscorer] = useState('Santiago Gimenez');
+
+  // Social replies hijacking state
+  const [socialMatchId, setSocialMatchId] = useState('g_a1');
+  const [socialEvent, setSocialEvent] = useState('var');
+  const [socialPlayer, setSocialPlayer] = useState('');
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
 
   // Load all central global hub states
   const loadHubData = async () => {
@@ -210,6 +216,17 @@ export default function GlobalHub({ onSelectPrediction, currentPredictionId }: G
             }`}
           >
             🎛️ kickoff Sim
+          </button>
+
+          <button
+            onClick={() => setActiveTab('social')}
+            className={`px-3 py-2 font-black text-xs uppercase tracking-wider border-2 border-black rounded-xl cursor-pointer transition-all ${
+              activeTab === 'social' 
+                ? 'bg-black text-yellow-400 neo-shadow-sm' 
+                : 'bg-stone-50 hover:bg-stone-100 text-black'
+            }`}
+          >
+            📢 SOCIAL REPLY
           </button>
         </div>
       </div>
@@ -657,6 +674,160 @@ export default function GlobalHub({ onSelectPrediction, currentPredictionId }: G
             </div>
           </div>
         )}
+
+        {/* VIEW 6: SOCIAL REPLY HIJACKER PANEL */}
+        {activeTab === 'social' && (() => {
+          const selectedMatch = WORLD_CUP_MATCHES.find(m => m.id === socialMatchId) || WORLD_CUP_MATCHES[4];
+          const tA = selectedMatch.teamA;
+          const tB = selectedMatch.teamB;
+          const hA = `#${tA.replace(/\s+/g, '')}`;
+          const hB = `#${tB.replace(/\s+/g, '')}`;
+          
+          const slugA = tA.toLowerCase().replace(/\s+/g, '-');
+          const slugB = tB.toLowerCase().replace(/\s+/g, '-');
+          const redirectUrl = `bragmode.com/match/${slugA}-vs-${slugB}-trash-talk`;
+
+          const playerText = socialPlayer.trim() ? ` ${socialPlayer.trim()}` : '';
+
+          // Templates list depending on event
+          let templates: string[] = [];
+          if (socialEvent === 'var') {
+            templates = [
+              `🚨 VAR cancels the goal! ❌ But the receipts are locked forever. Check who called it before kickoff or lock in your counter-take: ${redirectUrl} ${hA} vs ${hB} #WorldCup2026 #VAR`,
+              `Milk take incoming? 🥛 VAR just disallowed${playerText}'s goal! See who's crying in the group chat ledger: ${redirectUrl} ${hA} ${hB} #VAR`,
+              `VAR decision changes everything! 🤯 Lock in your counter-brags before the referee makes another call: ${redirectUrl} #WorldCup2026`
+            ];
+          } else if (socialEvent === 'penalty') {
+            templates = [
+              `❌ PENALTY MISSED! The scriptwriters are cooking! 🍳 See who predicted${playerText}'s choke or lock in your counter-brag: ${redirectUrl} ${hA} ${hB} #WorldCup2026`,
+              `Prophets or clowns? 🤡 Penalty missed! Check the live pre-match brag wall: ${redirectUrl} ${hA} vs ${hB} #VAR`,
+              `Absolute disaster from the spot! 🥶 Lock in a receipt to mock your friends when their predictions collapse: ${redirectUrl} ${hA} ${hB}`
+            ];
+          } else if (socialEvent === 'redcard') {
+            templates = [
+              `🟥 RED CARD! Player sent off! The match just flipped. Check who locked in this disaster before kickoff: ${redirectUrl} ${hA} vs ${hB} #WorldCup2026`,
+              `Ego check! 🚨 Red card given. Tap to challenge the original brags for $1.99 before the final whistle: ${redirectUrl} ${hA} ${hB}`,
+              `Playing with 10 men! 🤯 See if anyone predicted this red card chaos or mint your own slip: ${redirectUrl} #WorldCup2026`
+            ];
+          } else {
+            templates = [
+              `Receipts don't lie. 🔒 Lock in your World Cup trash talk before the whistle blows. Don't just tweet your takes, mint them: ${redirectUrl} ${hA} vs ${hB} #WorldCup2026`,
+              `The group chat is combusting! 🤯 See the most controversial premium takes locked in for ${tA} vs ${tB} here: ${redirectUrl} ${hA} ${hB}`,
+              `Own the bragging rights! 🏆 Lock in your pre-match predictions now and silence the group chat forever: ${redirectUrl} #WorldCup2026`
+            ];
+          }
+
+          const handleCopyText = (text: string, index: number) => {
+            navigator.clipboard.writeText(text);
+            setCopiedIndex(index);
+            setTimeout(() => setCopiedIndex(null), 2000);
+          };
+
+          return (
+            <div className="space-y-6 animate-[fadeIn_0.2s_ease-out]">
+              <div className="bg-black border-4 border-black p-5 rounded-3xl text-yellow-400 neo-shadow">
+                <h3 className="text-lg font-black uppercase tracking-tight flex items-center gap-2 mb-2 text-white font-sans italic">
+                  📢 REAL-TIME SOCIAL REPLY HIJACKER
+                </h3>
+                <p className="text-xs text-zinc-300 leading-relaxed font-semibold uppercase tracking-wide">
+                  Siphon live organic impressions by posting time-stamped proof from our immutable ledger immediately after key match events. Generate reply blocks with trending hashtags and live match wall links.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 text-black">
+                
+                {/* Control Form */}
+                <div className="bg-[#fbfaf5] border-4 border-black p-5 rounded-2xl space-y-4">
+                  <div className="flex items-center gap-1.5 border-b-2 border-black pb-2 text-black">
+                    <Zap size={18} className="text-yellow-500 fill-yellow-400" />
+                    <h4 className="font-sans font-black text-xs uppercase tracking-wider">HIJACK PARAMETERS</h4>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-[10px] font-black text-stone-700 uppercase tracking-wider mb-1 font-mono">1. Select Target Matchup</label>
+                      <select
+                        value={socialMatchId}
+                        onChange={(e) => setSocialMatchId(e.target.value)}
+                        className="w-full bg-white border-2 border-black rounded-xl py-2 px-3 text-xs text-black font-bold focus:ring-4 focus:ring-yellow-400 focus:outline-hidden transition-all uppercase font-sans cursor-pointer"
+                      >
+                        {WORLD_CUP_MATCHES.map((r) => (
+                          <option key={r.id} value={r.id}>{r.flagA} {r.teamA} vs {r.teamB} {r.flagB} ({r.group})</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-[10px] font-black text-stone-700 uppercase tracking-wider mb-1 font-mono">2. Select Game Event</label>
+                        <select
+                          value={socialEvent}
+                          onChange={(e) => setSocialEvent(e.target.value)}
+                          className="w-full bg-white border-2 border-black rounded-xl py-2 px-3 text-xs text-black font-bold focus:ring-4 focus:ring-yellow-400 focus:outline-hidden transition-all uppercase font-sans cursor-pointer"
+                        >
+                          <option value="var">⚽ VAR Goal Disallowed</option>
+                          <option value="penalty">❌ Missed Penalty</option>
+                          <option value="redcard">🟥 Red Card Given</option>
+                          <option value="default">📣 General Match Banter</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-black text-stone-700 uppercase tracking-wider mb-1 font-mono">3. Player Name (Optional)</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Messi"
+                          value={socialPlayer}
+                          onChange={(e) => setSocialPlayer(e.target.value)}
+                          className="w-full bg-white border-2 border-black rounded-xl py-2 px-3 text-xs text-black font-bold focus:outline-hidden uppercase font-mono"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="pt-2">
+                      <a
+                        href={`/api/cron/tweet-hook?matchId=${socialMatchId}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="w-full bg-yellow-400 hover:bg-yellow-300 text-black font-sans font-black text-xs py-3.5 px-4 rounded-xl border-2 border-black cursor-pointer tracking-widest uppercase transition-all flex items-center justify-center gap-2 text-center select-none"
+                      >
+                        📸 OPEN TWEET-HOOK SCREENSHOT CARD
+                      </a>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Copy Templates */}
+                <div className="bg-[#fbfaf5] border-4 border-black p-5 rounded-2xl space-y-4">
+                  <div className="flex items-center gap-1.5 border-b-2 border-black pb-2 text-black">
+                    <CheckCircle2 size={18} className="text-emerald-600" />
+                    <h4 className="font-sans font-black text-xs uppercase tracking-wider">AUTO-GENERATED SOCIAL REPLIES</h4>
+                  </div>
+
+                  <div className="space-y-4">
+                    {templates.map((tpl, idx) => (
+                      <div key={idx} className="bg-white border-2 border-black p-3.5 rounded-xl space-y-2.5">
+                        <p className="text-xs font-mono font-medium text-stone-800 break-words leading-relaxed">
+                          {tpl}
+                        </p>
+                        <div className="flex justify-between items-center pt-1 border-t border-dashed border-stone-200">
+                          <span className="text-[9px] font-mono text-stone-500 font-bold">TEMPLATE {idx + 1}</span>
+                          <button
+                            onClick={() => handleCopyText(tpl, idx)}
+                            className="bg-black hover:bg-stone-900 text-yellow-400 font-black text-[10px] px-3.5 py-1.5 rounded-lg border border-black uppercase tracking-wider cursor-pointer transition-all"
+                          >
+                            {copiedIndex === idx ? '✅ COPIED!' : '📋 COPY REPLY TEXT'}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+              </div>
+            </div>
+          );
+        })()}
 
       </div>
     </div>
