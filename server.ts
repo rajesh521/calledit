@@ -1,7 +1,6 @@
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
-import { DodoPayments } from "dodopayments";
 import dotenv from "dotenv";
 import fs from "fs";
 import { createClient } from "@supabase/supabase-js";
@@ -267,22 +266,6 @@ function getResolvedStatus(pred: any, outcomesList: any[]) {
   };
 }
 
-// Lazy-initialized Dodo Payments Client
-let dodoClient: DodoPayments | null = null;
-function getDodoClient(): DodoPayments | null {
-  if (!dodoClient) {
-    const key = process.env.DODO_PAYMENTS_API_KEY;
-    if (!key) {
-      console.warn("DODO_PAYMENTS_API_KEY environment variable is missing. Falling back to sandbox simulator mode.");
-      return null;
-    }
-    dodoClient = new DodoPayments({
-      bearerToken: key,
-      environment: process.env.DODO_PAYMENTS_ENV === "live" ? "live_mode" : "test_mode"
-    });
-  }
-  return dodoClient;
-}
 
 // REST API endpoints
 
@@ -914,97 +897,6 @@ app.get("/api/analytics", async (req, res) => {
   }
 });
 
-// REST API endpoint to create a Dodo checkout session
-app.post("/api/dodo/create-checkout", async (req, res) => {
-  try {
-    const { type, amount, email, country, customText, predictionPayload } = req.body;
-    const client = getDodoClient();
-
-    if (!client) {
-      // Return a simulated URL path if API KEY is missing so the app is 100% interactive for previews
-      const redirectUrl = `/checkout-simulation?type=${type}&amount=${amount}&email=${encodeURIComponent(email || "")}&country=${country || "US"}&customText=${encodeURIComponent(customText || "")}&r=${encodeURIComponent(predictionPayload || "")}`;
-      return res.json({ url: redirectUrl, isSimulated: true });
-    }
-
-    // Product IDs from environment or standard placeholders
-    const productId = type === "gold"
-      ? (process.env.DODO_PAYMENTS_GOLD_PRODUCT_ID || "p_gold_parlay")
-      : (process.env.DODO_PAYMENTS_TIP_PRODUCT_ID || "p_coffee_tip");
-
-    // The return_url leads back to our application. We append payment success metadata and the original prediction payload!
-    const returnUrl = `${req.headers.origin}/?r=${encodeURIComponent(predictionPayload || "")}&payment_success=true&type=${type}&customText=${encodeURIComponent(customText || "")}&amount=${amount}`;
-
-    console.log(`Creating real Dodo checkout session for product ${productId}...`);
-    
-    // In Dodo Payments, checkouts are created under checkoutSessions.
-    const session = await client.checkoutSessions.create({
-      customer: {
-        email: email || "customer@example.com",
-        name: "WC G.O.A.T Prophet"
-      },
-      billing_address: {
-        country: (country || "US") as any,
-      },
-      product_cart: [
-        {
-          product_id: productId,
-          quantity: 1,
-          amount: amount ? Math.round(amount * 100) : null // lowest denomination: cents for USD
-        }
-      ],
-      metadata: {
-        type,
-        amount: String(amount),
-        customText: customText || "",
-        predictionPayload: predictionPayload || ""
-      },
-      return_url: returnUrl
-    });
-
-    res.json({ url: session.checkout_url || "", isSimulated: false });
-  } catch (error: any) {
-    console.error("Dodo Payments session creation error:", error);
-    res.status(500).json({ error: error.message || "Failed to create Dodo checkout" });
-  }
-});
-
-// GET endpoint to fetch localized product pricing and payment methods from Dodo Payments
-app.get("/api/dodo/pricing", async (req, res) => {
-  const country = String(req.query.country || "").trim().toUpperCase();
-  const client = getDodoClient();
-
-  const fallbackPrices: Record<string, { price: string; currency: string; amount: number; paymentMethods: string[] }> = {
-    MX: { price: "$39 MXN", currency: "MXN", amount: 39, paymentMethods: ["OXXO", "Card"] },
-    ID: { price: "Rp 30.000 IDR", currency: "IDR", amount: 30000, paymentMethods: ["GrabPay", "Bank Transfer"] },
-    KE: { price: "KSh 260 KES", currency: "KES", amount: 260, paymentMethods: ["M-Pesa", "Card"] },
-    ZA: { price: "R 37 ZAR", currency: "ZAR", amount: 37, paymentMethods: ["Visa", "Mastercard"] },
-    SA: { price: "7.50 SAR", currency: "SAR", amount: 7.50, paymentMethods: ["mada", "Card"] },
-    AE: { price: "7.30 AED", currency: "AED", amount: 7.30, paymentMethods: ["Card", "Apple Pay"] }
-  };
-
-  const defaultPrice = { price: "$1.99 USD", currency: "USD", amount: 1.99, paymentMethods: ["Card", "Google Pay", "Apple Pay"] };
-
-  const resolved = fallbackPrices[country] || defaultPrice;
-
-  if (client) {
-    try {
-      const productId = process.env.DODO_PAYMENTS_GOLD_PRODUCT_ID || "p_gold_parlay";
-      const product = await client.products.retrieve(productId);
-      if (product) {
-        // Dodo Payments products might have price/currency properties depending on version
-        const apiPrice = (product as any).price;
-        const apiCurrency = (product as any).currency;
-        if (apiPrice && apiCurrency) {
-          // If the product currency matches the localized request, we could use it dynamically.
-        }
-      }
-    } catch (e) {
-      console.warn("Dodo Payments products.retrieve failed, using fallback pricing data:", e);
-    }
-  }
-
-  res.json(resolved);
-});
 
 function decodePredictionSafe(encodedStr: string): any | null {
   try {

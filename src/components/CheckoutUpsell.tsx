@@ -33,28 +33,23 @@ export default function CheckoutUpsell({ prediction, locale, onUpgradeClick }: C
 
   const country = getCountryFromLocale(locale);
 
-  // Fetch localized pricing on mount / locale change
+  // Static localized pricing configuration
+  const COUNTRY_PRICING: Record<string, PricingInfo> = {
+    MX: { price: '$39 MXN', currency: 'MXN', amount: 39, paymentMethods: ['OXXO'] },
+    ID: { price: 'Rp 30.000', currency: 'IDR', amount: 30000, paymentMethods: ['GrabPay'] },
+    KE: { price: 'KSh 260', currency: 'KES', amount: 260, paymentMethods: ['M-Pesa'] },
+    ZA: { price: 'R 37 ZAR', currency: 'ZAR', amount: 37, paymentMethods: ['Visa', 'Mastercard'] },
+    SA: { price: '7.50 SAR', currency: 'SAR', amount: 7.50, paymentMethods: ['mada'] },
+    US: { price: '$1.99 USD', currency: 'USD', amount: 1.99, paymentMethods: ['Card'] }
+  };
+
+  // Resolve localized pricing on mount / locale change
   useEffect(() => {
-    let active = true;
-    setLoading(true);
-    fetch(`/api/dodo/pricing?country=${country}`)
-      .then(res => res.json())
-      .then(data => {
-        if (active) {
-          setPricing(data);
-          setLoading(false);
-        }
-      })
-      .catch(err => {
-        console.error("Failed fetching pricing:", err);
-        if (active) {
-          setLoading(false);
-        }
-      });
-    return () => {
-      active = false;
-    };
+    const defaultPricing = COUNTRY_PRICING[country] || COUNTRY_PRICING['US'];
+    setPricing(defaultPricing);
+    setLoading(false);
   }, [country]);
+
 
   // Dynamic payment button labeling and badge renderers
   const getPaymentCTADetails = () => {
@@ -114,7 +109,7 @@ export default function CheckoutUpsell({ prediction, locale, onUpgradeClick }: C
         return {
           text: `UPGRADE TO GOLD TIER — ${pricing?.price || '$1.99 USD'}`,
           icon: <CreditCard size={14} className="stroke-[2.5]" />,
-          note: "Secured checkout powered by Dodo Payments"
+          note: "Secured simulation checkout gateway"
         };
     }
   };

@@ -139,40 +139,13 @@ export default function SimulationCheckout({
     setCvc(val);
   };
 
-  const handlePaySubmit = async (e: React.FormEvent) => {
+  const handlePaySubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (phase !== 'idle') return;
     
     setPhase('submitting');
-
-    try {
-      const response = await fetch('/api/dodo/create-checkout', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          type,
-          amount,
-          email: billingEmail || "customer@example.com",
-          country: country,
-          customText: customWord,
-          predictionPayload: predictionPayload
-        })
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        if (data.url && !data.isSimulated) {
-          // Real checkout redirect
-          window.location.href = data.url;
-          return;
-        }
-      }
-    } catch (err) {
-      console.warn("Backend Dodo Payments endpoint not configured or error. Falling back to the robust offline simulator flow.", err);
-    }
   };
+
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs transition-opacity duration-300">

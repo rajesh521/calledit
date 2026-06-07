@@ -401,7 +401,7 @@ export default function BragLandingPage() {
       </main>
 
       {/* =========================================================================
-         DODO SIMULATOR PAYMENT CHECKOUT OVERLAY
+         SIMULATED PAYMENT CHECKOUT OVERLAY
          ========================================================================= */}
       {isCheckoutOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs transition-opacity duration-300">
@@ -512,7 +512,7 @@ export default function BragLandingPage() {
                   <span>SECURE GATEWAY ACTIVE</span>
                   <span className="text-black font-black">•</span>
                   <ShieldCheck size={10} className="text-black" />
-                  <span>DODO SIMULATION GATE</span>
+                  <span>SIMULATION GATEWAY</span>
                 </div>
               </form>
             ) : checkoutPhase === 'processing' ? (
