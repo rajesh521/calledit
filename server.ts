@@ -740,7 +740,7 @@ app.get("/api/cron/tweet-hook", async (req, res) => {
   }
 });
 
-// Submit a new prediction (Mint Receipt)
+// Submit a new prediction (Mint Receipt) / Update existing prediction
 app.post("/api/predictions", async (req, res) => {
   try {
     const predictionData = req.body;
@@ -750,14 +750,25 @@ app.post("/api/predictions", async (req, res) => {
     
     const outcomesList = await readOutcomes();
     
-    // Formulate a robust record ID
-    const newId = `pred_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+    let targetId = predictionData.id;
+    let isUpdate = false;
+    if (targetId) {
+      const { data: existing } = await supabase.from("predictions").select("id").eq("id", targetId).maybeSingle();
+      if (existing) {
+        isUpdate = true;
+      }
+    }
+    
+    if (!isUpdate && !targetId) {
+      targetId = `pred_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+    }
+    
     const newRecord = {
       ...predictionData,
-      id: newId,
+      id: targetId,
       tipAmount: predictionData.tipAmount || 0,
       isGolden: predictionData.isGolden || false,
-      status: "pending"
+      status: predictionData.status || "pending"
     };
     
     // Auto-resolve if outcome is already registered in DB
@@ -765,11 +776,31 @@ app.post("/api/predictions", async (req, res) => {
     
     await writePrediction(resolvedRecord);
     
-    res.status(201).json(resolvedRecord);
+    res.status(isUpdate ? 200 : 201).json(resolvedRecord);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
 });
+
+// Fetch a single prediction by ID
+app.get("/api/predictions/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const predictions = await readPredictions();
+    const outcomesList = await readOutcomes();
+    
+    const pred = predictions.find(p => p.id === id);
+    if (!pred) {
+      return res.status(404).json({ error: "Prediction not found" });
+    }
+    
+    const resolvedRecord = getResolvedStatus(pred, outcomesList);
+    res.json(resolvedRecord);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 // Retrieve registered match outcomes
 app.get("/api/outcomes", async (req, res) => {
@@ -1347,12 +1378,28 @@ app.get(["/api/receipt-image", "/api/receipt-image/receipt.png"], async (req, re
   res.setHeader("Access-Control-Allow-Origin", "*");
 
   const r = req.query.r;
-  if (!r) {
-    return res.status(400).send("Missing prediction details");
+  const id = req.query.id;
+  
+  let pred: any = null;
+  if (id) {
+    try {
+      const predictions = await readPredictions();
+      const dbPred = predictions.find(p => p.id === id);
+      if (dbPred) {
+        const outcomesList = await readOutcomes();
+        pred = getResolvedStatus(dbPred, outcomesList);
+      }
+    } catch (err) {
+      console.error("Failed to fetch prediction for dynamic image by id:", err);
+    }
   }
-  const pred = decodePredictionSafe(String(r));
+  
+  if (!pred && r) {
+    pred = decodePredictionSafe(String(r));
+  }
+  
   if (!pred) {
-    return res.status(404).send("Invalid prediction payload");
+    return res.status(404).send("Prediction not found or invalid payload");
   }
 
   // Query database to check if this prediction ID is burned
@@ -1408,35 +1455,56 @@ function getPublicBaseUrl(req: express.Request): string {
   return `${proto}://${host}`;
 }
 
-// Capture ROOT request before Vite to output custom metadata crawl cards!
-app.get(["/", "/es-MX", "/id", "/ar", "/en-KE", "/en-ZA"], async (req, res, next) => {
+// Capture ROOT, brag, and room requests before Vite to output custom metadata crawl cards!
+app.get([
+  "/", 
+  "/es-MX", "/id", "/ar", "/en-KE", "/en-ZA",
+  "/brag/:id", "/room/:id",
+  "/:locale(es-MX|id|ar|en-KE|en-ZA)/brag/:id",
+  "/:locale(es-MX|id|ar|en-KE|en-ZA)/room/:id"
+], async (req, res, next) => {
   const r = req.query.r;
+  const id = req.params.id;
   let metaTags = "";
   let isBurned = false;
+  let pred: any = null;
 
   if (r) {
-    const pred = decodePredictionSafe(String(r));
-    if (pred) {
-      // Check database to see if prediction ID is burned
-      isBurned = pred.burned || false;
-      if (pred.id && !isBurned) {
-        try {
-          const { data: dbPred } = await supabase.from("predictions").select("burned").eq("id", pred.id).maybeSingle();
-          if (dbPred?.burned) {
-            isBurned = true;
-          }
-        } catch (err) {
-          console.error("Failed to query burned status for root html:", err);
-        }
-      }
+    pred = decodePredictionSafe(String(r));
+  } else if (id) {
+    try {
+      const predictions = await readPredictions();
+      pred = predictions.find(p => p.id === id);
+    } catch (err) {
+      console.error("Failed to query prediction by id for root html:", err);
+    }
+  }
 
+  if (pred) {
+    // Check database to see if prediction ID is burned
+    isBurned = pred.burned || false;
+    if (pred.id && !isBurned) {
       try {
-        const base = getPublicBaseUrl(req);
-        const nameUpper = (pred.name || "Anonymous").toUpperCase().replace(/"/g, '&quot;');
-        const absoluteImageUrl = `${base}/api/receipt-image/receipt.png?r=${encodeURIComponent(String(r))}`;
-        const absolutePageUrl = `${base}/?r=${encodeURIComponent(String(r))}`;
+        const { data: dbPred } = await supabase.from("predictions").select("burned").eq("id", pred.id).maybeSingle();
+        if (dbPred?.burned) {
+          isBurned = true;
+        }
+      } catch (err) {
+        console.error("Failed to query burned status for root html:", err);
+      }
+    }
 
-        metaTags = isBurned ? `
+    try {
+      const base = getPublicBaseUrl(req);
+      const nameUpper = (pred.name || "Anonymous").toUpperCase().replace(/"/g, '&quot;');
+      const absoluteImageUrl = id
+        ? `${base}/api/receipt-image/receipt.png?id=${pred.id}`
+        : `${base}/api/receipt-image/receipt.png?r=${encodeURIComponent(String(r))}`;
+      const absolutePageUrl = id
+        ? `${base}/brag/${pred.id}`
+        : `${base}/?r=${encodeURIComponent(String(r))}`;
+
+      metaTags = isBurned ? `
         <!-- Open Graph / Facebook -->
         <meta property="og:type" content="website" />
         <meta property="og:url" content="${absolutePageUrl}" />
@@ -1453,7 +1521,7 @@ app.get(["/", "/es-MX", "/id", "/ar", "/en-KE", "/en-ZA"], async (req, res, next
         <meta name="twitter:title" content="🔥 [EVIDENCE REDACTED]" />
         <meta name="twitter:description" content="This prediction was incinerated to protect ${nameUpper}'s reputation. Nothing to see here! 😈" />
         <meta name="twitter:image" content="${absoluteImageUrl}" />
-        ` : `
+      ` : `
         <!-- Open Graph / Facebook -->
         <meta property="og:type" content="website" />
         <meta property="og:url" content="${absolutePageUrl}" />
@@ -1470,10 +1538,9 @@ app.get(["/", "/es-MX", "/id", "/ar", "/en-KE", "/en-ZA"], async (req, res, next
         <meta name="twitter:title" content="${nameUpper} said it before kickoff. Were they right? 🔒" />
         <meta name="twitter:description" content="They locked in this World Cup 2026 brag BEFORE the match. Tap to see if it aged like wine 🍷 or milk 🥛 — and lock in yours." />
         <meta name="twitter:image" content="${absoluteImageUrl}" />
-        `;
-      } catch (err) {
-        console.error("Failed to dynamically generate meta tags:", err);
-      }
+      `;
+    } catch (err) {
+      console.error("Failed to dynamically generate meta tags:", err);
     }
   }
 

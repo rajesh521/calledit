@@ -232,7 +232,7 @@ export default function MatchRoom({ prediction, locale, onChallenge, onBack }: M
     setActiveReaction('coward');
     setTimeout(() => setActiveReaction(null), 1000);
 
-    const shareLink = `${window.location.origin}/room/${prediction.id}?r=${encodePrediction(prediction)}`;
+    const shareLink = `${window.location.origin}/room/${prediction.id}`;
     const summary = getPredictionSummary();
     const stakesText = prediction.stakes ? prediction.stakes : "admit they know nothing about football";
     const prophetName = prediction.name ? prediction.name : "Anonymous";
@@ -254,7 +254,7 @@ export default function MatchRoom({ prediction, locale, onChallenge, onBack }: M
     setActiveReaction('agree');
     setTimeout(() => setActiveReaction(null), 1000);
 
-    const shareLink = `${window.location.origin}/room/${prediction.id}?r=${encodePrediction(prediction)}`;
+    const shareLink = `${window.location.origin}/room/${prediction.id}`;
     const prophetName = prediction.name ? prediction.name : "Anonymous";
 
     const text = `🍷 I stand with ${prophetName}'s bold prophecy! They locked in: "${getPredictionSummary()}". Check the battle details here: ${shareLink}`;

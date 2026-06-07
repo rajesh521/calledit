@@ -90,7 +90,7 @@ export default function ReceiptView({
   const [roastIndex, setRoastIndex] = useState<number>(0);
   const [copiedText, setCopiedText] = useState<string | null>(null);
 
-  const roomUrl = `${window.location.origin}/room/${prediction.id}?r=${encodePrediction(prediction)}`;
+  const roomUrl = `${window.location.origin}/room/${prediction.id}`;
 
   const getProvocativePayload = (platform: 'whatsapp' | 'telegram' | 'discord') => {
     const name = prediction.name ? prediction.name.trim() : 'Anonymous';
@@ -279,15 +279,9 @@ export default function ReceiptView({
   const missTier = getMissTierAndColor();
 
   // Deep Link reconstruction URL including sharing state metadata
-  const shareUrl = `${window.location.origin}${window.location.pathname}?r=${encodePrediction({
-    ...prediction,
-    status: displayOutcome === 'wrong' ? 'incorrect' : 'correct'
-  })}`;
+  const shareUrl = `${window.location.origin}/brag/${prediction.id}`;
 
-  const imageUrl = `${window.location.origin}/api/receipt-image/receipt.png?r=${encodeURIComponent(encodePrediction({
-    ...prediction,
-    status: displayOutcome === 'wrong' ? 'incorrect' : simulatedStatus === 'correct' ? 'correct' : 'pending'
-  }))}&locale=${locale}`;
+  const imageUrl = `${window.location.origin}/api/receipt-image/receipt.png?id=${prediction.id}&locale=${locale}`;
 
   const handleBurnEvidence = async () => {
     if (!prediction.id) return;

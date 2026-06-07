@@ -286,12 +286,18 @@ export default function App() {
             setPrediction(updated);
             setIsGolden(true);
             setViewingShared(true);
+            
+            // Persist the success state to the database
+            submitPrediction(updated).catch(e => console.warn("Failed to persist gold card upgrade:", e));
+
             setTimeout(() => {
               playGoldChime();
             }, 300);
 
             // Sync clean URL without transaction metadata
-            const newUrl = `${window.location.origin}${window.location.pathname}?r=${encodePrediction(updated)}`;
+            const newUrl = isRoom 
+              ? `${window.location.origin}/room/${updated.id}` 
+              : `${window.location.origin}/brag/${updated.id}`;
             window.history.pushState({ path: newUrl }, '', newUrl);
           } else {
             const tipAmt = parseFloat(tipAmtStr);
@@ -302,13 +308,49 @@ export default function App() {
             setPrediction(updated);
             setViewingShared(true);
             
-            const newUrl = `${window.location.origin}${window.location.pathname}?r=${encodePrediction(updated)}`;
+            // Persist the success state to the database
+            submitPrediction(updated).catch(e => console.warn("Failed to persist tip:", e));
+            
+            const newUrl = isRoom 
+              ? `${window.location.origin}/room/${updated.id}` 
+              : `${window.location.origin}/brag/${updated.id}`;
             window.history.pushState({ path: newUrl }, '', newUrl);
           }
         } else {
           setPrediction(decoded);
           setViewingShared(true);
           setIsGolden(decoded.isGolden);
+        }
+      }
+    } else {
+      // Pathname parser (e.g. /brag/ROT-ABCD or /es-MX/brag/ROT-ABCD)
+      let cleanPath = window.location.pathname;
+      const pathLocale = ['/es-mx', '/id', '/ar', '/en-ke', '/en-za'].find(l => cleanPath.toLowerCase().startsWith(l));
+      if (pathLocale) {
+        cleanPath = cleanPath.substring(pathLocale.length);
+      }
+      
+      const parts = cleanPath.split('/').filter(Boolean);
+      if (parts.length >= 2) {
+        const type = parts[0].toLowerCase();
+        const id = parts[1];
+        if (type === 'brag' || type === 'room') {
+          fetch(`/api/predictions/${id}`)
+            .then(res => {
+              if (!res.ok) throw new Error("Not found");
+              return res.json();
+            })
+            .then(pred => {
+              setPrediction(pred);
+              setViewingShared(true);
+              setIsGolden(pred.isGolden || false);
+              if (type === 'room') {
+                setIsRoomView(true);
+              }
+            })
+            .catch(err => {
+              console.error("Failed to fetch prediction from database:", err);
+            });
         }
       }
     }
@@ -326,12 +368,14 @@ export default function App() {
     setViewingShared(false);
     setChallengePreFill(null);
     // Sync browser URL history on the client
-    const newUrl = `${window.location.origin}${window.location.pathname}?r=${encodePrediction(savedPred)}`;
+    const newUrl = isRoomView 
+      ? `${window.location.origin}/room/${savedPred.id}` 
+      : `${window.location.origin}/brag/${savedPred.id}`;
     window.history.pushState({ path: newUrl }, '', newUrl);
   };
 
   // Convert current view-only or active receipt into Golden Tier
-  const handleUpgradeSuccess = (customMessage?: string) => {
+  const handleUpgradeSuccess = async (customMessage?: string) => {
     setIsGolden(true);
     if (prediction) {
       const updated: Prediction = {
@@ -340,35 +384,60 @@ export default function App() {
         goldenMessage: customMessage || prediction.goldenMessage || "PROVED TO BE CORRECT"
       };
       setPrediction(updated);
+      try {
+        await submitPrediction(updated);
+      } catch (e) {
+        console.error("Failed to save gold upgrade in database:", e);
+      }
       
       // Update URL search parameter
-      const newUrl = `${window.location.origin}${window.location.pathname}?r=${encodePrediction(updated)}`;
+      const newUrl = isRoomView 
+        ? `${window.location.origin}/room/${updated.id}` 
+        : `${window.location.origin}/brag/${updated.id}`;
       window.history.pushState({ path: newUrl }, '', newUrl);
     }
   };
 
-  const handleTipSuccess = (customMessage?: string, tipAmount?: number) => {
+  const handleTipSuccess = async (customMessage?: string, tipAmount?: number) => {
     if (prediction && tipAmount) {
       const updated: Prediction = {
         ...prediction,
         tipAmount: (prediction.tipAmount || 0) + tipAmount
       };
       setPrediction(updated);
+      try {
+        await submitPrediction(updated);
+      } catch (e) {
+        console.error("Failed to save tip in database:", e);
+      }
       
-      const newUrl = `${window.location.origin}${window.location.pathname}?r=${encodePrediction(updated)}`;
+      const newUrl = isRoomView 
+        ? `${window.location.origin}/room/${updated.id}` 
+        : `${window.location.origin}/brag/${updated.id}`;
       window.history.pushState({ path: newUrl }, '', newUrl);
     }
   };
 
-  const handleBurnSuccess = () => {
+  const handleTipSuccessCallback = (customMessage?: string, tipAmount?: number) => {
+    handleTipSuccess(customMessage, tipAmount);
+  };
+
+  const handleBurnSuccess = async () => {
     if (prediction) {
       const updated: Prediction = {
         ...prediction,
         burned: true
       };
       setPrediction(updated);
+      try {
+        await submitPrediction(updated);
+      } catch (e) {
+        console.error("Failed to save burn in database:", e);
+      }
       
-      const newUrl = `${window.location.origin}${window.location.pathname}?r=${encodePrediction(updated)}`;
+      const newUrl = isRoomView 
+        ? `${window.location.origin}/room/${updated.id}` 
+        : `${window.location.origin}/brag/${updated.id}`;
       window.history.pushState({ path: newUrl }, '', newUrl);
     }
   };
