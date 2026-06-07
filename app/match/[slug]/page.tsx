@@ -1,5 +1,6 @@
 import React from 'react';
 import { createClient } from '@supabase/supabase-js';
+import ws from 'ws';
 import { WORLD_CUP_MATCHES } from '../../../src/data';
 import { Prediction } from '../../../src/types';
 import BanterMatchClient from './BanterMatchClient';
@@ -7,7 +8,13 @@ import BanterMatchClient from './BanterMatchClient';
 // Initialize Supabase client
 const supabaseUrl = process.env.SUPABASE_URL || '';
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-const supabase = (supabaseUrl && supabaseKey) ? createClient(supabaseUrl, supabaseKey) : null;
+const supabase = (supabaseUrl && supabaseKey) 
+  ? createClient(supabaseUrl, supabaseKey, {
+      realtime: {
+        transport: ws as any,
+      },
+    })
+  : null;
 
 // Parse slug to extract readable team names and preset match ID
 function getMatchDetailsFromSlug(slug: string) {

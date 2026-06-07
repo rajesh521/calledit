@@ -248,10 +248,10 @@ function getResolvedStatus(pred: any, outcomesList: any[]) {
     return { ...pred, status: 'pending' };
   }
   
-  const scoreMatched = String(pred.predictedScoreA).trim() === String(matchOutcome.actualScoreA).trim() && 
-                       String(pred.predictedScoreB).trim() === String(matchOutcome.actualScoreB).trim();
+  const scoreMatched = String(pred.predictedScoreA || "").trim() === String(matchOutcome.actualScoreA || "").trim() && 
+                       String(pred.predictedScoreB || "").trim() === String(matchOutcome.actualScoreB || "").trim();
                        
-  const goalscorerMatched = pred.firstGoalscorer.trim().toLowerCase() === matchOutcome.actualFirstGoalscorer.trim().toLowerCase();
+  const goalscorerMatched = String(pred.firstGoalscorer || "").trim().toLowerCase() === String(matchOutcome.actualFirstGoalscorer || "").trim().toLowerCase();
   
   // generous win matching condition (either direct score hit or first goalscorer hit counts as win)
   const correct = scoreMatched || goalscorerMatched;
